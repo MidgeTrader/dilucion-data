@@ -1,3 +1,5 @@
+import Link from 'next/link';
+
 function dilutionColor(pct) {
   if (pct == null) return 'bg-gray-700';
   if (pct >= 30) return 'bg-accent-red';
@@ -49,7 +51,11 @@ export default function DilutionHeatmap({ data, loading, error }) {
           const pct = item.dilution_percentage || 0;
           const width = maxDilution > 0 ? `${Math.max((pct / maxDilution) * 100, 4)}%` : '4%';
           return (
-            <div key={item.accession_number || i} className="group">
+            <Link
+              key={item.accession_number || i}
+              href={`/ticker/${item.ticker || item.cik}`}
+              className="group block rounded-md hover:bg-surface-hover/40 px-1 -mx-1 py-1 transition-colors"
+            >
               <div className="flex justify-between items-center mb-1">
                 <div className="flex items-center gap-2">
                   <span className="text-xs text-gray-600 w-4">{i + 1}</span>
@@ -71,7 +77,7 @@ export default function DilutionHeatmap({ data, loading, error }) {
                   style={{ width }}
                 />
               </div>
-            </div>
+            </Link>
           );
         })}
       </div>

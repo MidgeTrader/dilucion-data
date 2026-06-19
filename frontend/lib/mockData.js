@@ -47,14 +47,45 @@ const mockArticlesByTicker = {
   ],
 };
 
+function daysAgo(n) {
+  const d = new Date();
+  d.setDate(d.getDate() - n);
+  return d.toISOString().slice(0, 10);
+}
+
 const extraFilingsByTicker = {
   SPHL: [
-    { accession_number: '0001104659-26-100001', form_type: 'S-3', filed_date: '2026-06-15', title: 'Registration Statement — Shelf Offering up to $50M', shelf_amount_usd: 50000000, dilution_percentage: 32.5, warrants_found: true, has_atm: true, has_full_ratchet: false, has_prefunded_warrants: true, summary: 'Universal shelf registration filed. ATM provision detected. Prefunded warrants included.', source_url: 'https://www.sec.gov/' },
-    { accession_number: '0001104659-26-100002', form_type: '424B5', filed_date: '2026-05-28', title: 'Prospectus Supplement — $8.5M Registered Direct Offering', shelf_amount_usd: 8500000, dilution_percentage: 18.2, warrants_found: true, has_atm: false, has_full_ratchet: false, has_prefunded_warrants: true, summary: 'Registered direct offering with prefunded warrants at $2.10 exercise.', source_url: 'https://www.sec.gov/' },
-    { accession_number: '0001104659-26-100003', form_type: '8-K', filed_date: '2026-05-20', title: 'Current Report — Material Definitive Agreement', shelf_amount_usd: null, dilution_percentage: null, warrants_found: false, has_atm: false, has_full_ratchet: false, has_prefunded_warrants: false, summary: '8-K disclosing strategic partnership and potential equity issuance.', source_url: 'https://www.sec.gov/' },
-    { accession_number: '0001104659-26-100004', form_type: '10-Q', filed_date: '2026-05-15', title: 'Quarterly Report — Q1 2026', shelf_amount_usd: null, dilution_percentage: 2.1, warrants_found: false, has_atm: false, has_full_ratchet: false, has_prefunded_warrants: false, summary: 'Quarterly financials. Cash runway approximately 4 months at current burn.', source_url: 'https://www.sec.gov/' },
-    { accession_number: '0001104659-26-100005', form_type: 'S-3/A', filed_date: '2026-04-10', title: 'Amendment No. 1 to Shelf Registration', shelf_amount_usd: 50000000, dilution_percentage: 30.0, warrants_found: true, has_atm: true, has_full_ratchet: false, has_prefunded_warrants: false, summary: 'Amended shelf increases ATM capacity. Warrant overhang noted.', source_url: 'https://www.sec.gov/' },
-    { accession_number: '0001104659-26-100006', form_type: '424B5', filed_date: '2026-03-22', title: 'Prospectus Supplement — $5M PIPE Transaction', shelf_amount_usd: 5000000, dilution_percentage: 12.4, warrants_found: true, has_atm: false, has_full_ratchet: true, has_prefunded_warrants: false, summary: 'PIPE with full ratchet anti-dilution provision flagged as HIGH risk.', source_url: 'https://www.sec.gov/' },
+    // Financials
+    { accession_number: '0001104659-26-100004', form_type: '10-Q', filed_date: daysAgo(5), title: 'Form 10-Q — Quarterly report [Sections 13 or 15(d)]', shelf_amount_usd: null, dilution_percentage: 2.1, warrants_found: false, has_atm: false, has_full_ratchet: false, has_prefunded_warrants: false, summary: 'Quarterly financials. Cash runway approximately 4 months at current burn.', source_url: 'https://www.sec.gov/' },
+    { accession_number: '0001104659-26-100007', form_type: '10-K', filed_date: daysAgo(80), title: 'Form 10-K — Annual report [Section 13 and 15(d)]', shelf_amount_usd: null, dilution_percentage: 3.5, warrants_found: false, has_atm: false, has_full_ratchet: false, has_prefunded_warrants: false, summary: 'Annual financial report for fiscal year 2025.', source_url: 'https://www.sec.gov/' },
+    // News
+    { accession_number: '0001104659-26-100008', form_type: '8-K', filed_date: daysAgo(1), title: 'Springview Holdings Extends Maturity Date of Revolving Note', shelf_amount_usd: null, dilution_percentage: null, warrants_found: false, has_atm: false, has_full_ratchet: false, has_prefunded_warrants: false, summary: 'Material definitive agreement — revolving note maturity extension.', source_url: 'https://www.sec.gov/' },
+    { accession_number: '0001104659-26-100009', form_type: '8-K', filed_date: daysAgo(3), title: 'Springview Holdings Announces Investor Webinar', shelf_amount_usd: null, dilution_percentage: null, warrants_found: false, has_atm: false, has_full_ratchet: false, has_prefunded_warrants: false, summary: 'Announcement of upcoming investor relations event.', source_url: 'https://www.sec.gov/' },
+    { accession_number: '0001104659-26-100003', form_type: '8-K', filed_date: daysAgo(7), title: 'Springview Holdings Announces Debt-to-Equity Exchange, Loan Amendment, and Leadership Realignment', shelf_amount_usd: null, dilution_percentage: null, warrants_found: false, has_atm: false, has_full_ratchet: false, has_prefunded_warrants: false, summary: '8-K disclosing strategic partnership and potential equity issuance.', source_url: 'https://www.sec.gov/' },
+    { accession_number: '0001104659-26-100010', form_type: '8-K', filed_date: daysAgo(10), title: 'Springview Holdings CEO to Present at LD Micro Invitational XVI', shelf_amount_usd: null, dilution_percentage: null, warrants_found: false, has_atm: false, has_full_ratchet: false, has_prefunded_warrants: false, summary: 'CEO presentation at investment conference.', source_url: 'https://www.sec.gov/' },
+    { accession_number: '0001104659-26-100011', form_type: '8-K', filed_date: daysAgo(14), title: 'Springview Holdings CEO Doron Kempel to Appear on Big Biz Show', shelf_amount_usd: null, dilution_percentage: null, warrants_found: false, has_atm: false, has_full_ratchet: false, has_prefunded_warrants: false, summary: 'CEO media appearance notification.', source_url: 'https://www.sec.gov/' },
+    { accession_number: '0001104659-26-100012', form_type: '8-K', filed_date: daysAgo(21), title: 'Springview Holdings Amends Equity Line Agreement, Restructures Warrants, and Issues $1 Million Promissory Note', shelf_amount_usd: null, dilution_percentage: 15.0, warrants_found: true, has_atm: true, has_full_ratchet: false, has_prefunded_warrants: false, summary: 'Equity line amendment with warrant restructuring.', source_url: 'https://www.sec.gov/' },
+    // Prospectus
+    { accession_number: '0001104659-26-100001', form_type: 'S-3', filed_date: daysAgo(4), title: 'Registration Statement — Shelf Offering up to $50M', shelf_amount_usd: 50000000, dilution_percentage: 32.5, warrants_found: true, has_atm: true, has_full_ratchet: false, has_prefunded_warrants: true, summary: 'Universal shelf registration filed. ATM provision detected. Prefunded warrants included.', source_url: 'https://www.sec.gov/' },
+    { accession_number: '0001104659-26-100002', form_type: '424B5', filed_date: daysAgo(30), title: 'SHARE RESALE REGISTRATION | Shares: 34,073,681', shelf_amount_usd: 8500000, dilution_percentage: 18.2, warrants_found: true, has_atm: false, has_full_ratchet: false, has_prefunded_warrants: true, summary: 'Registered direct offering with prefunded warrants at $2.10 exercise.', source_url: 'https://www.sec.gov/' },
+    { accession_number: '0001104659-26-100006', form_type: '424B5', filed_date: daysAgo(90), title: 'SHARE RESALE REGISTRATION | Shares: 34,073,681', shelf_amount_usd: 5000000, dilution_percentage: 12.4, warrants_found: true, has_atm: false, has_full_ratchet: true, has_prefunded_warrants: false, summary: 'PIPE with full ratchet anti-dilution provision flagged as HIGH risk.', source_url: 'https://www.sec.gov/' },
+    { accession_number: '0001104659-26-100013', form_type: '424B4', filed_date: daysAgo(120), title: 'SHARE RESALE REGISTRATION | Shares: 34,073,681 | Bank: Maxim Group LLC', shelf_amount_usd: 10000000, dilution_percentage: 20.0, warrants_found: false, has_atm: true, has_full_ratchet: false, has_prefunded_warrants: false, summary: 'Prospectus with Maxim Group LLC as sales agent.', source_url: 'https://www.sec.gov/' },
+    { accession_number: '0001104659-26-100005', form_type: 'S-3/A', filed_date: daysAgo(70), title: 'Amendment No. 1 to Shelf Registration', shelf_amount_usd: 50000000, dilution_percentage: 30.0, warrants_found: true, has_atm: true, has_full_ratchet: false, has_prefunded_warrants: false, summary: 'Amended shelf increases ATM capacity. Warrant overhang noted.', source_url: 'https://www.sec.gov/' },
+    // Registrations
+    { accession_number: '0001104659-26-100014', form_type: 'S-8', filed_date: daysAgo(75), title: 'Form S-8 — Securities to be offered to employees in employee benefit plans', shelf_amount_usd: null, dilution_percentage: null, warrants_found: false, has_atm: false, has_full_ratchet: false, has_prefunded_warrants: false, summary: 'Employee benefit plan registration.', source_url: 'https://www.sec.gov/' },
+    { accession_number: '0001104659-26-100015', form_type: 'S-1', filed_date: daysAgo(78), title: 'Ascent Partners — SPA — Equity Line Agreement', shelf_amount_usd: 25000000, dilution_percentage: null, warrants_found: true, has_atm: false, has_full_ratchet: true, has_prefunded_warrants: false, summary: 'Equity line SPA with VWAP-based pricing mechanism.', source_url: 'https://www.sec.gov/' },
+    { accession_number: '0001104659-26-100016', form_type: 'DRS', filed_date: daysAgo(130), title: 'Form DRS — Draft Registration Statement', shelf_amount_usd: null, dilution_percentage: null, warrants_found: false, has_atm: false, has_full_ratchet: false, has_prefunded_warrants: false, summary: 'Confidential draft registration statement.', source_url: 'https://www.sec.gov/' },
+    { accession_number: '0001104659-26-100017', form_type: '8-A12B', filed_date: daysAgo(142), title: 'Form 8-A12B — Registration of securities [Section 12(b)]', shelf_amount_usd: null, dilution_percentage: null, warrants_found: false, has_atm: false, has_full_ratchet: false, has_prefunded_warrants: false, summary: 'Class A ordinary share registration.', source_url: 'https://www.sec.gov/' },
+    // Ownerships
+    { accession_number: '0001104659-26-100018', form_type: 'SCHEDULE 13G/A', filed_date: daysAgo(14), title: 'Ascent Partners Fund LLC (Filed by) — Amendment to Schedule 13G', shelf_amount_usd: null, dilution_percentage: null, warrants_found: false, has_atm: false, has_full_ratchet: false, has_prefunded_warrants: false, summary: 'Amendment to beneficial ownership report.', source_url: 'https://www.sec.gov/' },
+    { accession_number: '0001104659-26-100019', form_type: '3', filed_date: daysAgo(115), title: 'Hod Kleinman Amit (Reporting) — Initial Statement of Beneficial Ownership', shelf_amount_usd: null, dilution_percentage: null, warrants_found: false, has_atm: false, has_full_ratchet: false, has_prefunded_warrants: false, summary: 'Initial beneficial ownership statement.', source_url: 'https://www.sec.gov/' },
+    { accession_number: '0001104659-26-100020', form_type: 'SCHEDULE 13G', filed_date: daysAgo(125), title: 'Ascent Partners Fund LLC (Filed by) — Schedule 13G', shelf_amount_usd: null, dilution_percentage: null, warrants_found: false, has_atm: false, has_full_ratchet: false, has_prefunded_warrants: false, summary: 'Beneficial ownership report.', source_url: 'https://www.sec.gov/' },
+    { accession_number: '0001104659-26-100021', form_type: '3', filed_date: daysAgo(135), title: 'DeSalvo Joseph Edward (Reporting) — Initial Statement of Beneficial Ownership', shelf_amount_usd: null, dilution_percentage: null, warrants_found: false, has_atm: false, has_full_ratchet: false, has_prefunded_warrants: false, summary: 'Initial beneficial ownership statement.', source_url: 'https://www.sec.gov/' },
+    // Other
+    { accession_number: '0001104659-26-100022', form_type: 'EFFECT', filed_date: daysAgo(71), title: 'Form EFFECT — Notice of Effectiveness', shelf_amount_usd: null, dilution_percentage: null, warrants_found: false, has_atm: false, has_full_ratchet: false, has_prefunded_warrants: false, summary: 'SEC notice of effectiveness for S-1 registration.', source_url: 'https://www.sec.gov/' },
+    { accession_number: '0001104659-26-100023', form_type: 'CORRESP', filed_date: daysAgo(73), title: 'Form CORRESP — Correspondence', shelf_amount_usd: null, dilution_percentage: null, warrants_found: false, has_atm: false, has_full_ratchet: false, has_prefunded_warrants: false, summary: 'SEC correspondence regarding registration statement.', source_url: 'https://www.sec.gov/' },
+    { accession_number: '0001104659-26-100024', form_type: 'LETTER', filed_date: daysAgo(160), title: 'Form UPLOAD — SEC-generated letter', shelf_amount_usd: null, dilution_percentage: null, warrants_found: false, has_atm: false, has_full_ratchet: false, has_prefunded_warrants: false, summary: 'SEC-generated comment letter.', source_url: 'https://www.sec.gov/' },
+    { accession_number: '0001104659-26-100025', form_type: 'EFFECT', filed_date: daysAgo(165), title: 'Form EFFECT — Notice of Effectiveness', shelf_amount_usd: null, dilution_percentage: null, warrants_found: false, has_atm: false, has_full_ratchet: false, has_prefunded_warrants: false, summary: 'SEC notice of effectiveness.', source_url: 'https://www.sec.gov/' },
   ],
 };
 
@@ -229,9 +260,12 @@ export function mockTickerData(ticker = 'SPHL') {
 
   const allFilings = (extraFilingsByTicker[t] || extraFilingsByTicker.SPHL).map((f) => ({ ...f, ticker: t, cik: base.cik }));
 
+  const researchSummary = `**${t} — Dilution Research Summary (demo)**\n\n• Active shelf registration: $50M S-3 filed ${allFilings[0]?.filed_date || 'recently'}\n• Estimated max dilution: **${dilution}%**${dilution >= 20 ? ' 🔴 High risk' : dilution >= 10 ? ' 🟡 Medium risk' : ' 🟢 Low risk'}\n• Warrants ${base.warrants_found ? 'detected' : 'not detected'}\n• ATM provision: ${base.has_atm ? 'Active' : 'Inactive'}\n• Full ratchet anti-dilution: ${base.has_full_ratchet ? 'Present' : 'Not found'}\n\nAnalysis based on SEC filings indexed for ${t}. Run RAG analysis for full AI-generated report with citations.`;
+
   return {
     profile,
     filings: allFilings,
+    research_summary: researchSummary,
     articles: mockArticlesByTicker[t] || mockArticlesByTicker.SPHL.map((a) => ({ ...a, title: a.title.replace('SPHL', t) })),
     news: mockArticlesByTicker[t] || mockArticlesByTicker.SPHL.map((a) => ({ ...a, title: a.title.replace('SPHL', t) })),
     insights: mockInsights(t, base),
@@ -243,11 +277,11 @@ export function mockTickerData(ticker = 'SPHL') {
     },
     candles: generateCandles(isSphl ? 2.53 : 12.5, 90),
     risk: {
-      offering_ability: isSphl ? 'Low' : dilution >= 20 ? 'High' : 'Med',
-      offering_frequency: isSphl ? 'Low' : 'Low',
-      dilution: isSphl ? 'Low' : dilution >= 20 ? 'High' : dilution >= 10 ? 'Med' : 'Low',
-      cash_need: isSphl ? 'Med' : 'High',
-      overall_offering_risk: isSphl ? 'Low' : dilution >= 20 ? 'High' : 'Med',
+      offering_ability: isSphl ? 'Low' : dilution >= 25 ? 'High' : dilution >= 10 ? 'Med' : 'Low',
+      offering_frequency: isSphl ? 'Low' : dilution >= 25 ? 'Med' : 'Low',
+      dilution: isSphl ? 'High' : dilution >= 20 ? 'High' : dilution >= 10 ? 'Med' : 'Low',
+      cash_need: isSphl ? 'High' : dilution >= 15 ? 'High' : 'Med',
+      overall_offering_risk: isSphl ? 'Low' : dilution >= 25 ? 'High' : dilution >= 10 ? 'Med' : 'Low',
       warrant_exercise: isSphl ? 'Low' : base.warrants_found ? 'High' : 'Low',
     },
   };

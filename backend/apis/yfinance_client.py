@@ -72,7 +72,8 @@ class YFinanceClient:
             "market_cap": None, "enterprise_value": None,
             "avg_volume": None, "cash_per_share": None,
             "institutional_ownership": None, "days_to_cover": None,
-            "shares_outstanding": None,
+            "shares_outstanding": None, "float_shares": None,
+            "short_percent_float": None,
         }
         try:
             import yfinance as yf
@@ -97,6 +98,8 @@ class YFinanceClient:
                 ),
                 "days_to_cover": float(info["daysToCover"]) if info.get("daysToCover") else None,
                 "shares_outstanding": float(info["sharesOutstanding"]) if info.get("sharesOutstanding") else None,
+                "float_shares": float(info["floatShares"]) if info.get("floatShares") else None,
+                "short_percent_float": round(float(info["shortPercentOfFloat"]) * 100, 2) if info.get("shortPercentOfFloat") else None,
             }
             self.cache.set(cache_key, fields, 86400)
         except Exception as exc:

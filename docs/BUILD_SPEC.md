@@ -16,10 +16,10 @@ Telegram sections 7A-7F appended below.
 - companies, filings_history, watchlist, rag_analyses, api_cache, bot_state
 
 ### 7C. database.py
-- AUTO: PRIVATE_MODE or no SUPABASE → SQLite; else Supabase
+- Local-only: Parquet + SQLite (data/dilution.db)
 
 ### 7D. .env
-- TELEGRAM_BOT_TOKEN, PRIVATE_MODE=true
+- TELEGRAM_BOT_TOKEN (optional)
 
 ### 7E. CLI
 - python main.py telegram [--daemon]

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import logging
 from datetime import date, datetime, timezone
 from typing import List, Optional
@@ -22,7 +23,11 @@ FILINGS_COLUMNS = [
     "accession_number", "cik", "ticker", "form_type", "filed_date",
     "shelf_amount_usd", "dilution_percentage", "warrants_found",
     "has_atm", "has_full_ratchet", "has_prefunded_warrants",
-    "risk_level", "summary", "source_url",
+    "is_shelf_takedown", "is_rights_offering", "is_overnight_offering",
+    "is_block_trade", "is_secondary_offering", "is_primary_offering",
+    "is_best_efforts", "is_firm_commitment", "is_global_offering",
+    "is_continuous_offering", "is_spot_offering", "is_warrant_offering",
+    "risk_level", "summary", "source_url", "warrants_detail",
 ]
 
 
@@ -77,6 +82,11 @@ class ParquetDB:
         df = self._read_filings()
         record = filing.model_dump()
         record["filed_date"] = pd.Timestamp(filing.filed_date)
+        # Serialize lists to JSON strings for Parquet storage
+        record["warrants_detail"] = json.dumps(record.get("warrants_detail", []))
+        # Normalize existing filed_date column if stored as string
+        if not df.empty and df["filed_date"].dtype == "object":
+            df["filed_date"] = pd.to_datetime(df["filed_date"], errors="coerce")
         if not df.empty and filing.accession_number in df["accession_number"].astype(str).values:
             mask = df["accession_number"].astype(str) == filing.accession_number
             for col, val in record.items():
@@ -101,6 +111,18 @@ class ParquetDB:
         has_atm: bool = False,
         has_full_ratchet: bool = False,
         has_prefunded_warrants: bool = False,
+        is_shelf_takedown: bool = False,
+        is_rights_offering: bool = False,
+        is_overnight_offering: bool = False,
+        is_block_trade: bool = False,
+        is_secondary_offering: bool = False,
+        is_primary_offering: bool = False,
+        is_best_efforts: bool = False,
+        is_firm_commitment: bool = False,
+        is_global_offering: bool = False,
+        is_continuous_offering: bool = False,
+        is_spot_offering: bool = False,
+        is_warrant_offering: bool = False,
         risk_level: Optional[RiskLevel] = None,
         summary: Optional[str] = None,
         source_url: Optional[str] = None,
@@ -124,6 +146,19 @@ class ParquetDB:
             has_atm=has_atm,
             has_full_ratchet=has_full_ratchet,
             has_prefunded_warrants=has_prefunded_warrants,
+            is_shelf_takedown=is_shelf_takedown,
+            is_rights_offering=is_rights_offering,
+            is_overnight_offering=is_overnight_offering,
+            is_block_trade=is_block_trade,
+            is_secondary_offering=is_secondary_offering,
+            is_primary_offering=is_primary_offering,
+            is_best_efforts=is_best_efforts,
+            is_firm_commitment=is_firm_commitment,
+            is_global_offering=is_global_offering,
+            is_continuous_offering=is_continuous_offering,
+            is_spot_offering=is_spot_offering,
+            is_warrant_offering=is_warrant_offering,
+            warrants_detail=[],
             risk_level=risk_level,
             summary=summary,
             source_url=source_url,
@@ -222,7 +257,20 @@ class ParquetDB:
             has_atm=bool(row.get("has_atm", False)),
             has_full_ratchet=bool(row.get("has_full_ratchet", False)),
             has_prefunded_warrants=bool(row.get("has_prefunded_warrants", False)),
+            is_shelf_takedown=bool(row.get("is_shelf_takedown", False)),
+            is_rights_offering=bool(row.get("is_rights_offering", False)),
+            is_overnight_offering=bool(row.get("is_overnight_offering", False)),
+            is_block_trade=bool(row.get("is_block_trade", False)),
+            is_secondary_offering=bool(row.get("is_secondary_offering", False)),
+            is_primary_offering=bool(row.get("is_primary_offering", False)),
+            is_best_efforts=bool(row.get("is_best_efforts", False)),
+            is_firm_commitment=bool(row.get("is_firm_commitment", False)),
+            is_global_offering=bool(row.get("is_global_offering", False)),
+            is_continuous_offering=bool(row.get("is_continuous_offering", False)),
+            is_spot_offering=bool(row.get("is_spot_offering", False)),
+            is_warrant_offering=bool(row.get("is_warrant_offering", False)),
             risk_level=risk_level,
             summary=str(row["summary"]) if pd.notna(row.get("summary")) else None,
             source_url=str(row["source_url"]) if pd.notna(row.get("source_url")) else None,
+            warrants_detail=json.loads(row["warrants_detail"]) if pd.notna(row.get("warrants_detail")) and row["warrants_detail"] else [],
         )

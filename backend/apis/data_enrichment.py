@@ -5,6 +5,7 @@ from __future__ import annotations
 import logging
 
 from apis.finnhub_client import FinnhubClient
+from apis.finviz_client import FinvizClient
 from apis.news_aggregator import NewsAggregator
 from apis.polygon_client import PolygonClient
 from apis.stocksera_client import StockseraClient
@@ -23,6 +24,7 @@ class DataEnrichment:
         self.cache = TTLCache(settings.cache_db_path)
         self.polygon = PolygonClient(self.cache)
         self.finnhub = FinnhubClient(self.cache)
+        self.finviz = FinvizClient(self.cache)
         self.stocksera = StockseraClient(self.cache)
         self.yfinance = YFinanceClient(self.cache)
         self.news = NewsAggregator(self.cache)
@@ -81,6 +83,12 @@ class DataEnrichment:
             profile.days_to_cover = yf_profile.get("days_to_cover")
         if not profile.shares_outstanding:
             profile.shares_outstanding = yf_profile.get("shares_outstanding")
+        if not profile.float_shares:
+            profile.float_shares = yf_profile.get("float_shares")
+        if not profile.short_percent_float:
+            profile.short_percent_float = yf_profile.get("short_percent_float")
+        if not profile.days_to_cover:
+            profile.days_to_cover = yf_profile.get("days_to_cover")
 
         quote = self.finnhub.get_quote(ticker)
         if quote:
@@ -99,6 +107,27 @@ class DataEnrichment:
         if short:
             profile.borrow_rate = short.borrow_rate
             profile.short_percent_float = short.short_percent_float
+
+        # Finviz: completa lo que falte de otras fuentes
+        fv = self.finviz.get_profile_fields(ticker)
+        if not profile.sector:
+            profile.sector = fv.get("sector")
+        if not profile.industry:
+            profile.industry = fv.get("industry")
+        if not profile.float_shares:
+            profile.float_shares = fv.get("float_shares")
+        if not profile.short_percent_float:
+            profile.short_percent_float = fv.get("short_percent_float")
+        if not profile.days_to_cover:
+            profile.days_to_cover = fv.get("days_to_cover")
+        if not profile.institutional_ownership:
+            profile.institutional_ownership = fv.get("institutional_ownership")
+        if not profile.employees:
+            profile.employees = fv.get("employees")
+        if not profile.country or profile.country.lower() == "us":
+            profile.country = fv.get("country") or profile.country
+        if not profile.shares_outstanding:
+            profile.shares_outstanding = fv.get("shares_outstanding")
 
         return profile
 

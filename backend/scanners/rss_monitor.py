@@ -23,7 +23,7 @@ RSS_URL = (
     "?action=getcurrent&type=&company=&dateb=&owner=include&start=0&count=100&output=atom"
 )
 
-CRITICAL_FORMS = {"S-3", "S-3/A", "424B3", "424B5", "424B2", "8-K", "EFFECT", "RW", "S-1", "S-1/A"}
+CRITICAL_FORMS = {"S-3", "S-3/A", "424B2", "424B3", "424B4", "424B5", "8-K", "EFFECT", "RW", "S-1", "S-1/A"}
 ATOM_NS = {"atom": "http://www.w3.org/2005/Atom"}
 
 

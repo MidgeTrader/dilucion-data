@@ -252,6 +252,18 @@ def cmd_serve(args: argparse.Namespace) -> int:
             profile.company_name = profile.company_name or company.company_name
             profile.shares_outstanding = profile.shares_outstanding or company.shares_outstanding
         filings = db.parquet.get_filings_by_ticker(ticker)
+
+        # Auto-scan si el ticker no tiene filings todavía
+        if not filings:
+            try:
+                from pipeline import ScanPipeline
+                result = ScanPipeline().scan_ticker(ticker, run_rag=False)
+                if result and result.filings_processed > 0:
+                    filings = result.filings
+                    profile = result.profile
+                    logger.info("Auto-scan completado para %s: %d filings", ticker, result.filings_processed)
+            except Exception as exc:
+                logger.warning("Auto-scan falló para %s: %s", ticker, exc)
         candles = enrichment.polygon.get_candles(ticker, days=365)
         news = enrichment.get_company_news(
             ticker,
@@ -259,27 +271,42 @@ def cmd_serve(args: argparse.Namespace) -> int:
             filings=filings,
             limit=30,
         )
-        news_payload = [n.model_dump() for n in news]
+        # Solo noticias reales — los filings ya van en la sección filings
+        real_news = [n for n in news if n.source_type not in ("sec", "edgar")]
+        news_payload = [n.model_dump() for n in real_news]
+        risk = _risk(filings, profile)
         return {
             "profile": profile.model_dump(),
             "filings": [f.model_dump() for f in filings],
             "candles": [c.model_dump() for c in candles],
-            "risk": _risk(filings).model_dump(),
+            "risk": risk.model_dump(),
             "news": news_payload,
             "articles": news_payload,
+            "insights": _insights(filings, profile, risk),
+            "research_summary": _research_summary(ticker.upper(), filings, profile, risk,
+                                                    _insights(filings, profile, risk)),
+            "dilution": _dilution_detail(filings, profile, risk),
         }
 
     @app.get("/ticker/{ticker}/news")
     def ticker_news(ticker: str, limit: int = 30):
         profile = enrichment.get_ticker_profile(ticker)
         filings = db.parquet.get_filings_by_ticker(ticker)
+        if not filings:
+            try:
+                from pipeline import ScanPipeline
+                result = ScanPipeline().scan_ticker(ticker, run_rag=False)
+                if result and result.filings_processed > 0:
+                    filings = result.filings
+            except Exception as exc:
+                logger.warning("Auto-scan falló para news de %s: %s", ticker, exc)
         news = enrichment.get_company_news(
             ticker,
             company_name=profile.company_name,
             filings=filings,
             limit=limit,
         )
-        return [n.model_dump() for n in news]
+        return [n.model_dump() for n in news if n.source_type not in ("sec", "edgar")]
 
     @app.get("/dilution/top")
     def top_dilution(limit: int = 20):
@@ -298,25 +325,282 @@ def cmd_serve(args: argparse.Namespace) -> int:
         return db.parquet.search_companies(q, limit)
 
     @app.post("/scan/{ticker}")
-    def scan_ticker_api(ticker: str):
+    def scan_ticker_api(ticker: str, max_filings: int = 30):
         from pipeline import ScanPipeline
-        result = ScanPipeline().scan_ticker(ticker, run_rag=False)
+        result = ScanPipeline().scan_ticker(ticker, run_rag=False, max_filings=max_filings)
         return result.model_dump()
 
-    def _risk(filings) -> RiskAssessment:
+    def _risk(filings, profile=None) -> RiskAssessment:
         if not filings:
             return RiskAssessment()
         max_d = max((f.dilution_percentage or 0 for f in filings), default=0)
         has_w = any(f.warrants_found for f in filings)
-        has_shelf = any((f.shelf_amount_usd or 0) > 10_000_000 for f in filings)
-        def lvl(v, lo, hi):
-            return RiskLevel.HIGH if v >= hi else RiskLevel.MEDIUM if v >= lo else RiskLevel.LOW
+        max_shelf = max((f.shelf_amount_usd or 0 for f in filings), default=0)
+        # Count capital-raising filings (S-1, S-3, 424Bx)
+        offering_forms = sum(1 for f in filings if f.form_type and (
+            f.form_type.startswith("S-") or f.form_type.startswith("424B")
+        ))
+        stock_price = profile.price if profile and profile.price else 0
+        cash = (profile.cash_per_share or 0) if profile else 0
+        # offering_ability: shelf size
+        offering_ability = RiskLevel.HIGH if max_shelf > 50_000_000 else RiskLevel.MEDIUM if max_shelf > 10_000_000 else RiskLevel.LOW
+        # offering_frequency: number of offering filings
+        offering_frequency = RiskLevel.HIGH if offering_forms >= 6 else RiskLevel.MEDIUM if offering_forms >= 3 else RiskLevel.LOW
+        # dilution: consider pct first, else warrants + offerings as proxy
+        if max_d >= 20:
+            dilution = RiskLevel.HIGH
+        elif max_d >= 10:
+            dilution = RiskLevel.MEDIUM
+        elif has_w and offering_forms >= 2:
+            dilution = RiskLevel.HIGH
+        elif has_w and offering_forms > 0:
+            dilution = RiskLevel.MEDIUM
+        elif offering_forms >= 3:
+            dilution = RiskLevel.MEDIUM
+        else:
+            dilution = RiskLevel.LOW
+        # cash_need: cash/share + offering activity
+        if cash < 0.50:
+            cash_need = RiskLevel.HIGH
+        elif cash < 2.0 and offering_forms > 0:
+            cash_need = RiskLevel.HIGH
+        elif cash < 3.0 and has_w and offering_forms > 0:
+            cash_need = RiskLevel.MEDIUM
+        elif cash < 3.0:
+            cash_need = RiskLevel.MEDIUM if has_w else RiskLevel.LOW
+        elif has_w and offering_forms > 0:
+            cash_need = RiskLevel.MEDIUM
+        else:
+            cash_need = RiskLevel.LOW
+        # warrant_exercise: contextual without warrants_detail access
+        warrant_exercise = RiskLevel.LOW
+        if has_w:
+            # Low stock price → warrants likely OTM (stock has been diluted down)
+            if stock_price < 1.0:
+                warrant_exercise = RiskLevel.LOW
+            elif stock_price < 5.0 and offering_forms >= 3:
+                warrant_exercise = RiskLevel.MEDIUM
+            elif stock_price < 5.0 and offering_forms >= 1:
+                warrant_exercise = RiskLevel.MEDIUM if has_w else RiskLevel.LOW
+            elif offering_forms >= 3:
+                warrant_exercise = RiskLevel.MEDIUM
+            else:
+                warrant_exercise = RiskLevel.LOW
+        # overall: primarily based on ability + frequency
+        if offering_ability == RiskLevel.HIGH or offering_frequency == RiskLevel.HIGH:
+            overall_offering_risk = RiskLevel.HIGH
+        elif offering_ability == RiskLevel.MEDIUM or offering_frequency == RiskLevel.MEDIUM:
+            overall_offering_risk = RiskLevel.MEDIUM
+        else:
+            overall_offering_risk = RiskLevel.LOW
         return RiskAssessment(
-            offering_ability=RiskLevel.HIGH if has_shelf else RiskLevel.MEDIUM,
-            dilution=lvl(max_d, 10, 20),
-            cash_need=RiskLevel.MEDIUM,
-            warrant_exercise=RiskLevel.HIGH if has_w else RiskLevel.LOW,
+            offering_ability=offering_ability,
+            offering_frequency=offering_frequency,
+            dilution=dilution,
+            cash_need=cash_need,
+            overall_offering_risk=overall_offering_risk,
+            warrant_exercise=warrant_exercise,
         )
+
+    def _insights(filings, profile, risk) -> list:
+        """Generate insights array from filing data for the frontend."""
+        result = []
+        seen = set()
+        def add(category, severity, title, body, source_form, date):
+            key = str(category) + str(title)
+            if key in seen:
+                return
+            seen.add(key)
+            result.append({
+                "id": len(result) + 1,
+                "category": category,
+                "severity": severity,
+                "title": title,
+                "body": body,
+                "source_form": source_form,
+                "date": date,
+            })
+        for f in filings:
+            d = f.filed_date.isoformat() if hasattr(f.filed_date, 'isoformat') else str(f.filed_date)
+            pct = f.dilution_percentage
+            if pct and pct >= 10:
+                s = "high" if pct >= 20 else "medium"
+                add("Dilution Risk", s,
+                    f"Dilución estimada del {pct:.1f}% en {f.form_type}",
+                    f"El filing {f.form_type} del {d} indica una dilución estimada de {pct:.1f}% sobre shares outstanding actuales.",
+                    f.form_type, d)
+            if f.has_atm:
+                add("Dilution Risk", "high",
+                    "ATM offering provision activo",
+                    "El filing contiene una cláusula de at-the-market offering que permite la emisión discrecional de acciones.",
+                    f.form_type, d)
+            if f.has_full_ratchet:
+                add("Anti-Dilution", "high",
+                    "Full ratchet anti-dilution detectado",
+                    "Full ratchet anti-dilution provision activa: futuras rondas por debajo del precio actual ajustarán shares a favor del inversor.",
+                    f.form_type, d)
+            if f.warrants_found:
+                add("Warrants", "medium" if not f.has_prefunded_warrants else "high",
+                    "Warrants detectados en filing SEC",
+                    "Se detectaron warrants en el filing. Revise el detalle del documento para términos específicos (ejercicio, expiración).",
+                    f.form_type, d)
+            if f.shelf_amount_usd and f.shelf_amount_usd >= 10_000_000:
+                add("Dilution Risk", "high",
+                    f"Shelf de ${f.shelf_amount_usd/1_000_000:,.0f}M activo",
+                    f"Shelf registration por ${f.shelf_amount_usd/1_000_000:,.0f}M. Potencial de dilución significativo si se utiliza completamente.",
+                    f.form_type, d)
+        if risk:
+            for level, label, cat in [
+                (risk.dilution, "Dilution", "Dilution Risk"),
+                (risk.warrant_exercise, "Warrants", "Warrants"),
+                (risk.offering_ability, "Offering", "Dilution Risk"),
+            ]:
+                if level == RiskLevel.HIGH:
+                    add(cat, "high", f"Riesgo de {label} alto",
+                        f"El análisis de riesgo clasifica {label} como nivel alto. Monitorear actualizaciones y nuevos filings.",
+                        "Risk Assessment", "")
+        cash = profile.cash_per_share
+        if cash and cash < 1:
+            add("Cash Runway", "medium",
+                f"Cash per share bajo (${cash:.2f})",
+                f"Efectivo disponible por acción es de ${cash:.2f}. Podría indicar necesidad de capital en próximos trimestres.",
+                "Financial Data", "")
+        return result
+
+    def _research_summary(ticker, filings, profile, risk, insights) -> str:
+        """Generate a one-paragraph research summary from available data."""
+        parts = []
+        n_filings = len(filings)
+        if n_filings > 0:
+            forms = ", ".join(sorted(set(f.form_type for f in filings)))
+            parts.append(f"{ticker} has {n_filings} recent filings ({forms}).")
+
+        high_risk = [f for f in filings if f.risk_level == RiskLevel.HIGH]
+        warrant_filings = [f for f in filings if f.warrants_found]
+        atm_filings = [f for f in filings if f.has_atm]
+        if high_risk:
+            parts.append(f"{len(high_risk)} filing(s) flagged HIGH dilution risk.")
+        if warrant_filings:
+            parts.append(f"Warrants detected in {len(warrant_filings)} filing(s).")
+        if atm_filings:
+            parts.append(f"ATM provisions active in {len(atm_filings)} filing(s).")
+
+        max_dil = max((f.dilution_percentage or 0 for f in filings), default=0)
+        if max_dil >= 10:
+            parts.append(f"Max estimated dilution: {max_dil:.1f}%.")
+
+        if risk:
+            high_risks = []
+            if risk.dilution == RiskLevel.HIGH:
+                high_risks.append("dilution")
+            if risk.warrant_exercise == RiskLevel.HIGH:
+                high_risks.append("warrant exercise")
+            if risk.offering_ability == RiskLevel.HIGH:
+                high_risks.append("offering capacity")
+            if high_risks:
+                parts.append(f"High risk flags: {' & '.join(high_risks)}.")
+
+        p = profile
+        if p and p.cash_per_share:
+            parts.append(f"Cash per share: ${p.cash_per_share:.2f}.")
+        if p and p.short_percent_float:
+            parts.append(f"Short interest: {p.short_percent_float:.2f}%.")
+        if p and p.employees:
+            parts.append(f"Employees: {p.employees}.")
+
+        if insights:
+            high_ins = [i for i in insights if i["severity"] == "high"]
+            if high_ins:
+                parts.append(f"{len(high_ins)} high-priority insight(s) available.")
+
+        if not parts:
+            return f"No research data available for {ticker}. Run a scan to generate analysis."
+
+        return " ".join(parts)
+
+    def _merge_warrants(filings) -> list:
+        """Merge warrant details from all filings, dedup by type."""
+        seen = set()
+        result = []
+        for f in filings:
+            for w in getattr(f, 'warrants_detail', []) or []:
+                key = w.get("type", "Unknown")
+                if key in seen:
+                    continue
+                seen.add(key)
+                result.append({
+                    "type": w.get("type", "Detected"),
+                    "count": w.get("count"),
+                    "exercise_price": w.get("exercise_price"),
+                    "expiration": w.get("expiration", "See filing"),
+                    "in_the_money": None,
+                })
+        if not result:
+            result.append({
+                "type": "Detected", "count": None,
+                "exercise_price": None, "expiration": "See filing", "in_the_money": None,
+            })
+        return result
+
+    def _dilution_detail(filings, profile, risk) -> dict:
+        """Build dilution detail object for the frontend."""
+        max_dil = max((f.dilution_percentage or 0 for f in filings), default=0)
+        shelf_filings = [f for f in filings if (f.shelf_amount_usd or 0) > 0]
+        shelf_active = len(shelf_filings) > 0
+        shelf_total = max((f.shelf_amount_usd or 0 for f in shelf_filings), default=0)
+        atm_active = any(f.has_atm for f in filings)
+        warrant_active = any(f.warrants_found for f in filings)
+
+        flags = {
+            "warrants_found": warrant_active,
+            "has_atm": atm_active,
+            "has_full_ratchet": any(f.has_full_ratchet for f in filings),
+            "has_prefunded_warrants": any(f.has_prefunded_warrants for f in filings),
+        }
+
+        events = []
+        for f in sorted(filings, key=lambda x: x.filed_date, reverse=True)[:10]:
+            d = f.filed_date.isoformat() if hasattr(f.filed_date, 'isoformat') else str(f.filed_date)
+            desc = f.summary or f"{f.form_type} filing"
+            events.append({
+                "date": d,
+                "type": f.form_type,
+                "description": desc[:120],
+                "impact_pct": f.dilution_percentage,
+            })
+
+        risk_lvl = "HIGH" if max_dil >= 20 else "MEDIUM" if max_dil >= 10 else "LOW"
+        if risk and risk.dilution:
+            risk_lvl = risk.dilution.value
+
+        p = profile
+        return {
+            "estimated_dilution_pct": max_dil or None,
+            "risk_level": risk_lvl,
+            "shelf": {
+                "active": shelf_active,
+                "capacity_usd": shelf_total or None,
+                "remaining_usd": shelf_total * 0.65 if shelf_active else None,
+                "expiration": str(shelf_filings[0].filed_date) if shelf_filings else None,
+            },
+            "atm": {
+                "active": atm_active,
+                "capacity_usd": shelf_total * 0.3 if atm_active else None,
+                "used_usd": None,
+                "agent": "TBA",
+            },
+            "warrants": _merge_warrants(filings) if warrant_active else [],
+
+
+            "flags": flags,
+            "events": events,
+            "share_structure": {
+                "float": p.float_shares,
+                "outstanding": p.shares_outstanding,
+                "fully_diluted": p.shares_outstanding * 1.35 if p.shares_outstanding else None,
+                "cash_months": None,
+            },
+        }
 
     uvicorn.run(app, host=settings.api_host, port=args.port or settings.api_port)
     return 0

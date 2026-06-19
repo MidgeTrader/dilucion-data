@@ -34,30 +34,52 @@ class DilutionCalculator:
       Dilution % = S_new / (S_current + S_new) × 100
     """
 
-    OFFERING_PATTERN = re.compile(
-        r"aggregate\s+offering\s+price\s+of\s+up\s+to\s+\$?\s*([\d,]+(?:\.\d+)?)\s*(million|billion|M|B)?",
-        re.I,
-    )
+    OFFERING_PATTERNS = [
+        # "aggregate offering price of up to $X million"
+        re.compile(r"(?:aggregate\s+)?offering\s+(?:price|amount|of)\s+(?:of\s+)?(?:up\s+to\s+)?\$?\s*([\d,]+(?:\.\d+)?)\s*(million|billion|M|B)?", re.I),
+        # "registered direct offering of $X million"
+        re.compile(r"(?:registered\s+)?direct\s+offering\s+(?:of\s+)?\$?\s*([\d,]+(?:\.\d+)?)\s*(million|billion|M|B)?", re.I),
+        # "private placement financing of $X million"
+        re.compile(r"(?:private\s+)?placement\s+(?:financing\s+)?(?:of\s+)?\$?\s*([\d,]+(?:\.\d+)?)\s*(million|billion|M|B)?", re.I),
+        # "securities purchase agreement for $X million"
+        re.compile(r"(?:securities\s+)?purchase\s+agreement\s+(?:for\s+)?\$?\s*([\d,]+(?:\.\d+)?)\s*(million|billion|M|B)?", re.I),
+        # "gross proceeds ... $X million"
+        re.compile(r"gross\s+proceeds.*?\$\s*([\d,]+(?:\.\d+)?)\s*(million|billion|M|B)", re.I),
+        # "public offering of $X million" / "underwritten public offering of $X million"
+        re.compile(r"(?:underwritten\s+)?public\s+offering\s+(?:of\s+)?\$?\s*([\d,]+(?:\.\d+)?)\s*(million|billion|M|B)?", re.I),
+        # "may offer and sell ... having an aggregate offering price of up to $X" (S-3 shelf)
+        re.compile(r"aggregate\s+offering\s+price\s+of\s+up\s+to\s+\$?\s*([\d,]+(?:\.\d+)?)\s*(million|billion|M|B)?", re.I),
+        # "shelf registration ... $X million" / "shelf ... $X million"
+        re.compile(r"shelf\s+(?:registration\s+)?(?:of\s+)?(?:up\s+to\s+)?\$?\s*([\d,]+(?:\.\d+)?)\s*(million|billion|M|B)?", re.I),
+        # "proposed public offering of $X million"
+        re.compile(r"proposed\s+(?:public\s+)?offering\s+(?:of\s+)?\$?\s*([\d,]+(?:\.\d+)?)\s*(million|billion|M|B)?", re.I),
+        # "sell up to $X million of common stock" / "sale of $X million"
+        re.compile(r"(?:sell|sale)\s+(?:of\s+)?(?:up\s+to\s+)?\$?\s*([\d,]+(?:\.\d+)?)\s*(million|billion|M|B)?\s+(?:of\s+)?(?:common\s+)?stock", re.I),
+        # "raise approximately $X million" / "raise up to $X million"
+        re.compile(r"raise\s+(?:approximately\s+)?(?:up\s+to\s+)?\$?\s*([\d,]+(?:\.\d+)?)\s*(million|billion|M|B)?", re.I),
+        # "at the market offering ... aggregate offering price of up to $X"
+        re.compile(r"at[-\s]the[-\s]market.*?(?:aggregate\s+)?offering\s+price.*?(?:up\s+to\s+)?\$?\s*([\d,]+(?:\.\d+)?)\s*(million|billion|M|B)?", re.I),
+    ]
 
     @staticmethod
     def extract_offering_amount(text: str) -> Optional[float]:
-        match = DilutionCalculator.OFFERING_PATTERN.search(text)
-        if not match:
-            generic = re.search(
-                r"\$\s*([\d,]+(?:\.\d+)?)\s*(million|billion|M|B)?",
-                text[:50000],
-                re.I,
-            )
-            if not generic:
-                return None
-            match = generic
-        amount = float(match.group(1).replace(",", ""))
-        unit = (match.group(2) or "").lower() if match.lastindex and match.lastindex >= 2 else ""
-        if unit in {"million", "m"}:
-            amount *= 1_000_000
-        elif unit in {"billion", "b"}:
-            amount *= 1_000_000_000
-        return amount
+        best = None
+        for pattern in DilutionCalculator.OFFERING_PATTERNS:
+            for match in pattern.finditer(text):
+                raw = match.group(1)
+                if not raw:
+                    continue
+                unit = match.group(2).lower() if match.lastindex and match.lastindex >= 2 and match.group(2) else ""
+                amount = float(raw.replace(",", ""))
+                if unit in {"million", "m"}:
+                    amount *= 1_000_000
+                elif unit in {"billion", "b"}:
+                    amount *= 1_000_000_000
+                # Skip par values (stock par value is always < $1)
+                if amount is not None and amount >= 1_000:
+                    if best is None or amount > best:
+                        best = amount
+        return best
 
     @staticmethod
     def classify_risk(dilution_pct: Optional[float]) -> RiskLevel:

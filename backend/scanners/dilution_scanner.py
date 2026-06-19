@@ -20,7 +20,9 @@ logger = logging.getLogger(__name__)
 CRITICAL_FORMS = {
     "S-3": "🔴",
     "S-3/A": "🔴",
+    "424B2": "🔴",
     "424B3": "🔴",
+    "424B4": "🔴",
     "424B5": "🔴",
     "8-K": "💀",
     "EFFECT": "⚠️",

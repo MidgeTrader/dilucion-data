@@ -12,7 +12,7 @@ Full-stack system combining **automatic SEC dilution detection** (Dilution Track
 | **Document Parser** | HTML → text + keyword extraction |
 | **Dilution Calculator** | M/P = S_new → dilution % + risk classification |
 | **RAG Engine** | ChromaDB + DeepSeek + OpenAI embeddings |
-| **Data Layer** | Parquet (always) + Supabase (optional) |
+| **Data Layer** | Parquet + SQLite + ChromaDB (all local) |
 | **Dashboard** | Next.js dark theme — overview, filings, monitor |
 
 ## Quick Start
@@ -58,7 +58,7 @@ askedgar_clone/
 │   ├── scanners/          # dilution_scanner, rss_monitor, efts_search, company_facts
 │   ├── parsers/           # sec_parser, dilution_calculator
 │   ├── rag/               # rag_engine, prompts
-│   ├── db/                # parquet_db, database (Supabase)
+│   ├── db/                # parquet_db, database (SQLite)
 │   ├── apis/              # polygon, finnhub, stocksera, yfinance
 │   ├── pipeline.py        # scan ticker orchestrator
 │   └── main.py            # CLI + FastAPI
@@ -84,7 +84,9 @@ askedgar_clone/
 
 See `backend/.env.example`. Required: `DEEPSEEK_API_KEY`, `OPENAI_API_KEY`, `SEC_USER_AGENT`.
 
-Optional: `POLYGON_API_KEY`, `FINNHUB_API_KEY`, `STOCKSERA_API_KEY`, `SUPABASE_URL`, `SUPABASE_KEY`.
+Optional: `POLYGON_API_KEY`, `MASSIVE_API_KEY`, `FINNHUB_API_KEY`, `STOCKSERA_API_KEY`, `EODHD_API_KEY`.
+
+All data lives under `data/` (Parquet, SQLite, Chroma) — no cloud database required.
 
 ## Dilution Formula
 

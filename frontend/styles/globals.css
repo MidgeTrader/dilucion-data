@@ -2,24 +2,25 @@
 @tailwind components;
 @tailwind utilities;
 
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
 
 @layer base {
   html {
     @apply bg-surface text-gray-100 antialiased;
+    font-family: 'Inter', system-ui, sans-serif;
   }
 
   body {
-    @apply min-h-screen;
+    @apply min-h-screen bg-surface;
   }
 
   ::-webkit-scrollbar {
-    width: 6px;
-    height: 6px;
+    width: 5px;
+    height: 5px;
   }
 
   ::-webkit-scrollbar-track {
-    @apply bg-surface;
+    @apply bg-transparent;
   }
 
   ::-webkit-scrollbar-thumb {
@@ -29,26 +30,68 @@
 
 @layer components {
   .card {
-    @apply bg-surface-card border border-surface-border rounded-xl p-4;
+    @apply bg-surface-card border border-surface-border rounded-card;
   }
 
-  .btn-primary {
-    @apply bg-accent hover:bg-blue-600 text-white font-medium px-4 py-2 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed;
+  .card-inner {
+    @apply p-4;
   }
 
-  .btn-ghost {
-    @apply text-gray-400 hover:text-white hover:bg-surface-hover px-3 py-2 rounded-lg transition-colors;
+  /* AskEdgar-style KPI cards — compact rows, no extra padding */
+  .kpi-card {
+    @apply relative;
   }
 
-  .nav-item {
-    @apply flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm text-gray-400 hover:text-white hover:bg-surface-hover transition-colors cursor-pointer;
+  .kpi-row {
+    @apply flex items-center justify-between gap-2 px-4 py-[9px] border-b border-surface-border/50 last:border-0 h-[36px];
   }
 
-  .nav-item-active {
+  .kpi-label {
+    @apply text-[13px] text-gray-500 flex-1 min-w-0;
+  }
+
+  .kpi-value {
+    @apply text-[13px] text-gray-100 font-medium text-right tabular-nums shrink-0;
+  }
+
+  .kv-row {
+    @apply flex justify-between items-center py-2.5 border-b border-surface-border/60 last:border-0 text-sm;
+  }
+
+  .kv-label {
+    @apply text-gray-500;
+  }
+
+  .kv-value {
+    @apply text-gray-100 font-medium text-right;
+  }
+
+  .nav-link {
+    @apply flex items-center gap-2.5 px-3 py-2 rounded-md text-sm text-gray-400 hover:text-white hover:bg-surface-hover transition-colors;
+  }
+
+  .nav-link-active {
+    @apply bg-surface-hover text-white font-medium;
+  }
+
+  .input-search,
+  .input-dark {
+    @apply w-full bg-surface-muted border border-surface-border rounded-lg px-4 py-2.5 text-sm text-white placeholder-gray-600 focus:outline-none focus:border-gray-600;
+  }
+
+  .tab-btn {
+    @apply px-3 py-1.5 text-sm rounded-md transition-colors;
+  }
+
+  .tab-btn-active {
     @apply bg-surface-hover text-white;
   }
 
-  .input-dark {
-    @apply bg-surface border border-surface-border rounded-lg px-3 py-2 text-sm text-white placeholder-gray-500 focus:outline-none focus:border-accent w-full;
+  .tab-btn-inactive {
+    @apply text-gray-500 hover:text-gray-300;
+  }
+
+  .pill-ask {
+    @apply fixed bottom-6 right-6 z-40 flex items-center gap-2 bg-white text-black font-medium px-5 py-3 rounded-full shadow-2xl hover:bg-gray-100 transition-all cursor-pointer;
   }
 }

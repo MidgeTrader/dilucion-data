@@ -1,5 +1,7 @@
 import { useState, useCallback, useEffect } from 'react';
 import { useRouter } from 'next/router';
+import { searchTickers } from '../lib/mockData';
+import { setLastTicker } from '../lib/lastTicker';
 
 export default function SearchBar({ onSelect, placeholder = 'Search ticker or company...' }) {
   const router = useRouter();
@@ -18,10 +20,7 @@ export default function SearchBar({ onSelect, placeholder = 'Search ticker or co
     setLoading(true);
     setError(null);
     try {
-      const backend = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8000';
-      const res = await fetch(`${backend}/search?q=${encodeURIComponent(q)}&limit=8`);
-      if (!res.ok) throw new Error('Search failed');
-      const data = await res.json();
+      const data = await searchTickers(q, 8);
       setResults(data);
       setOpen(true);
     } catch (err) {
@@ -44,6 +43,7 @@ export default function SearchBar({ onSelect, placeholder = 'Search ticker or co
   const handleSelect = (item) => {
     setQuery(item.ticker);
     setOpen(false);
+    setLastTicker(item.ticker);
     if (onSelect) onSelect(item);
     router.push(`/ticker/${item.ticker}`);
   };
@@ -51,7 +51,9 @@ export default function SearchBar({ onSelect, placeholder = 'Search ticker or co
   const handleSubmit = (e) => {
     e.preventDefault();
     if (query.trim()) {
-      router.push(`/ticker/${query.trim().toUpperCase()}`);
+      const t = query.trim().toUpperCase();
+      setLastTicker(t);
+      router.push(`/ticker/${t}`);
       setOpen(false);
     }
   };

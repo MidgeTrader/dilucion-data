@@ -19,7 +19,8 @@ logger = logging.getLogger(__name__)
 class CompanyFactsClient:
     """Fetch company data from data.sec.gov APIs."""
 
-    BASE = "https://data.sec.gov"
+    SEC_DATA = "https://data.sec.gov"
+    SEC_WWW = "https://www.sec.gov"
 
     def __init__(self, cache: Optional[TTLCache] = None) -> None:
         self.settings = get_settings()
@@ -30,14 +31,14 @@ class CompanyFactsClient:
         }
 
     @retry(stop=stop_after_attempt(3), wait=wait_exponential(min=1, max=15), reraise=False)
-    def _get(self, path: str, cache_key: str, ttl: int) -> Optional[dict]:
+    def _get(self, base: str, path: str, cache_key: str, ttl: int) -> Optional[dict]:
         cached = self.cache.get(cache_key)
         if cached:
             return cached
         time.sleep(0.1)
         try:
             with httpx.Client(timeout=30) as client:
-                resp = client.get(f"{self.BASE}{path}", headers=self.headers)
+                resp = client.get(f"{base}{path}", headers=self.headers)
                 if resp.status_code == 404:
                     return None
                 resp.raise_for_status()
@@ -50,7 +51,7 @@ class CompanyFactsClient:
 
     def resolve_cik_from_ticker(self, ticker: str) -> Optional[str]:
         """Resolve CIK using SEC company tickers JSON."""
-        data = self._get("/files/company_tickers.json", "sec:company_tickers", 86400)
+        data = self._get(self.SEC_WWW, "/files/company_tickers.json", "sec:company_tickers", 86400)
         if not data:
             return None
         for entry in data.values():
@@ -60,7 +61,7 @@ class CompanyFactsClient:
 
     def get_submissions(self, cik: str) -> Optional[dict]:
         padded = cik.zfill(10)
-        return self._get(f"/submissions/CIK{padded}.json", f"sec:submissions:{cik}", 3600)
+        return self._get(self.SEC_DATA, f"/submissions/CIK{padded}.json", f"sec:submissions:{cik}", 3600)
 
     def get_recent_filings(
         self,
@@ -80,7 +81,7 @@ class CompanyFactsClient:
         docs = recent.get("primaryDocument", [])
 
         results: List[SECFilingMeta] = []
-        for i in range(min(len(forms), limit * 3)):
+        for i in range(min(len(forms), limit * 8)):
             form = forms[i]
             if form_filter and form not in form_filter:
                 if not any(form.startswith(f.split("/")[0]) for f in form_filter):
@@ -104,7 +105,7 @@ class CompanyFactsClient:
     def get_shares_outstanding(self, cik: str) -> Optional[float]:
         """Extract shares outstanding from company facts XBRL."""
         padded = cik.zfill(10)
-        data = self._get(f"/api/xbrl/companyfacts/CIK{padded}.json", f"sec:facts:{cik}", 7200)
+        data = self._get(self.SEC_DATA, f"/api/xbrl/companyfacts/CIK{padded}.json", f"sec:facts:{cik}", 7200)
         if not data:
             return None
         try:

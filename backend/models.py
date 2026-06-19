@@ -38,9 +38,22 @@ class FilingDilution(BaseModel):
     has_atm: bool = False
     has_full_ratchet: bool = False
     has_prefunded_warrants: bool = False
+    is_shelf_takedown: bool = False
+    is_rights_offering: bool = False
+    is_overnight_offering: bool = False
+    is_block_trade: bool = False
+    is_secondary_offering: bool = False
+    is_primary_offering: bool = False
+    is_best_efforts: bool = False
+    is_firm_commitment: bool = False
+    is_global_offering: bool = False
+    is_continuous_offering: bool = False
+    is_spot_offering: bool = False
+    is_warrant_offering: bool = False
     risk_level: Optional[RiskLevel] = None
     summary: Optional[str] = None
     source_url: Optional[str] = None
+    warrants_detail: list[dict] = Field(default_factory=list)
 
 
 DilutionAlert = FilingDilution
@@ -140,19 +153,33 @@ class TickerProfile(BaseModel):
     cik: Optional[str] = None
     company_name: Optional[str] = None
     sector: Optional[str] = None
+    industry: Optional[str] = None
     country: Optional[str] = None
+    exchange: Optional[str] = None
     float_shares: Optional[float] = None
     shares_outstanding: Optional[float] = None
+    market_cap: Optional[float] = None
+    enterprise_value: Optional[float] = None
     price: Optional[float] = None
     change_percent: Optional[float] = None
     borrow_rate: Optional[float] = None
     short_percent_float: Optional[float] = None
+    avg_volume: Optional[float] = None
+    cash_per_share: Optional[float] = None
+    days_to_cover: Optional[float] = None
+    institutional_ownership: Optional[float] = None
+    employees: Optional[int] = None
+    description: Optional[str] = None
+    about: Optional[str] = None
+    website: Optional[str] = None
 
 
 class RiskAssessment(BaseModel):
     offering_ability: RiskLevel = RiskLevel.MEDIUM
+    offering_frequency: RiskLevel = RiskLevel.MEDIUM
     dilution: RiskLevel = RiskLevel.MEDIUM
     cash_need: RiskLevel = RiskLevel.MEDIUM
+    overall_offering_risk: RiskLevel = RiskLevel.MEDIUM
     warrant_exercise: RiskLevel = RiskLevel.LOW
 
 
@@ -163,6 +190,16 @@ class CandlePoint(BaseModel):
     low: float
     close: float
     volume: Optional[float] = None
+
+
+class NewsArticle(BaseModel):
+    title: str
+    source: str
+    date: str
+    url: str
+    summary: Optional[str] = None
+    source_type: Optional[str] = None  # sec, massive, eodhd, yfinance, finnhub, polygon, google, benzinga
+    sentiment: Optional[float] = None  # EODHD polarity -1..1
 
 
 class SECFilingMeta(BaseModel):

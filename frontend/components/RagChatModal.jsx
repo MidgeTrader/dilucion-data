@@ -1,4 +1,11 @@
 import { useState, useRef, useEffect } from 'react';
+import { DEMO_MODE } from '../lib/mockData';
+
+const DEMO_ANSWERS = {
+  dilution: `**Auditoría de dilución (demo) — ${'{ticker}'}\n\n• Shelf S-3 registrado: $25,000,000\n• Dilución estimada vs float: **32.5%** 🔴\n• ATM activo: Sí — sales agent registrado\n• Warrants: 1,200,000 autorizados @ $4.50 exercise\n• Pre-funded warrants detectados\n\n⚠️ Riesgo HIGH — capacidad de dilución significativa vs float de 4.2M shares.`,
+  warrants: `**Warrant Scanner (demo):**\n\n1. Volumen autorizado: 1,200,000 warrants\n2. Exercise price: $4.50\n3. Anti-dilución: No Full Ratchet detectado\n4. Pre-funded: Sí — 400,000 unidades\n5. Expiración: 5 años desde issuance`,
+  default: `Respuesta demo para {ticker}. En producción, DeepSeek analizará el filing SEC real con citas textuales.`,
+};
 
 const PROMPT_OPTIONS = [
   { value: 'dilution', label: 'Full Dilution Audit' },
@@ -35,6 +42,20 @@ export default function RagChatModal({ ticker, isOpen, onClose, filingUrl }) {
     setMessages((prev) => [...prev, userMsg]);
 
     try {
+      if (DEMO_MODE) {
+        await new Promise((r) => setTimeout(r, 800));
+        const key = promptType in DEMO_ANSWERS ? promptType : 'default';
+        const answer = DEMO_ANSWERS[key].replace(/\{ticker\}/g, ticker || 'TICKER');
+        setMessages((prev) => [
+          ...prev,
+          {
+            role: 'assistant',
+            content: answer,
+            citations: [{ content: 'Demo excerpt: "Aggregate offering price of up to $25,000,000..."' }],
+          },
+        ]);
+        return;
+      }
       const res = await fetch('/api/rag', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },

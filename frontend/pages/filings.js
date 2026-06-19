@@ -3,6 +3,7 @@ import Head from 'next/head';
 import Layout from '../components/Layout';
 import SearchBar from '../components/SearchBar';
 import FilingsTable from '../components/FilingsTable';
+import { fetchAllFilings } from '../lib/mockData';
 
 export default function FilingsPage() {
   const [filings, setFilings] = useState([]);
@@ -10,9 +11,7 @@ export default function FilingsPage() {
   const [error, setError] = useState(null);
 
   useEffect(() => {
-    const backend = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8000';
-    fetch(`${backend}/filings/all?limit=100`)
-      .then((r) => { if (!r.ok) throw new Error('Failed to load filings'); return r.json(); })
+    fetchAllFilings(100)
       .then(setFilings)
       .catch((e) => setError(e.message))
       .finally(() => setLoading(false));

@@ -16,7 +16,43 @@ from scanners.company_facts import CompanyFactsClient
 
 logger = logging.getLogger(__name__)
 
-CRITICAL_FORMS = ["S-3", "S-3/A", "424B3", "424B5", "424B2", "8-K", "EFFECT", "RW", "S-1"]
+# All forms to scan — broad coverage for grouped filings view
+ALL_FORMS = None  # None = scan everything the SEC API has
+# Fallback for SEC form descriptions when summary is empty
+FORM_DESCRIPTIONS = {
+    "10-Q": "Form 10-Q — Quarterly report [Sections 13 or 15(d)]",
+    "10-K": "Form 10-K — Annual report [Section 13 and 15(d)]",
+    "10-Q/A": "Form 10-Q/A — Quarterly report [Amendment]",
+    "10-K/A": "Form 10-K/A — Annual report [Amendment]",
+    "8-K": "Form 8-K — Current report",
+    "8-K/A": "Form 8-K/A — Current report [Amendment]",
+    "S-1": "Form S-1 — General form for registration of securities",
+    "S-1/A": "Form S-1/A — Registration statement [Amendment]",
+    "S-3": "Form S-3 — Shelf registration statement",
+    "S-3/A": "Form S-3/A — Shelf registration [Amendment]",
+    "S-8": "Form S-8 — Securities to be offered to employees",
+    "424B2": "Prospectus supplement [Rule 424(b)(2)]",
+    "424B3": "Prospectus supplement [Rule 424(b)(3)]",
+    "424B4": "Form 424B4 — Prospectus [Rule 424(b)(4)]",
+    "424B5": "Prospectus supplement [Rule 424(b)(5)]",
+    "DEF 14A": "Form DEF 14A — Definitive proxy statement",
+    "DEFA14A": "Form DEFA14A — Additional definitive proxy materials",
+    "PRE 14A": "Form PRE 14A — Preliminary proxy statement",
+    "3": "Form 3 — Initial statement of beneficial ownership",
+    "4": "Form 4 — Statement of changes in beneficial ownership",
+    "5": "Form 5 — Annual statement of beneficial ownership",
+    "144": "Form 144 — Report of proposed sale of securities",
+    "13G": "Schedule 13G — Beneficial ownership report",
+    "13G/A": "Schedule 13G/A — Beneficial ownership [Amendment]",
+    "13D": "Schedule 13D — Beneficial ownership report",
+    "EFFECT": "Form EFFECT — Notice of Effectiveness",
+    "RW": "Form RW — Withdrawal of registration statement",
+    "SD": "Form SD — Specialized disclosure report",
+    "CORRESP": "Form CORRESP — Correspondence",
+    "LETTER": "Form UPLOAD — SEC-generated letter",
+    "DRS": "Form DRS — Draft registration statement",
+    "8-A12B": "Form 8-A12B — Registration of securities [Section 12(b)]",
+}
 
 
 class ScanPipeline:
@@ -48,7 +84,7 @@ class ScanPipeline:
         *,
         question: Optional[str] = None,
         prompt_type: Optional[str] = None,
-        max_filings: int = 5,
+        max_filings: int = 10,
         run_rag: bool = True,
     ) -> PipelineResult:
         """Full scan pipeline for a ticker."""
@@ -73,9 +109,19 @@ class ScanPipeline:
             country=profile.country or "US",
         ))
 
-        filings_meta = self.facts.get_recent_filings(cik, form_filter=CRITICAL_FORMS, limit=max_filings)
+        filings_meta = self.facts.get_recent_filings(cik, form_filter=ALL_FORMS, limit=max_filings * 3)
         if not filings_meta:
-            filings_meta = self.facts.get_recent_filings(cik, limit=max_filings)
+            filings_meta = self.facts.get_recent_filings(cik, limit=max_filings * 3)
+
+        # Priority: offering forms (424B, S-3, S-1) > 8-K > others
+        def form_priority(m):
+            f = m.form_type.upper()
+            if f.startswith("424B") or f.startswith("S-3") or f in ("S-1", "EFFECT"):
+                return 0
+            if f == "8-K":
+                return 1
+            return 2
+        filings_meta.sort(key=form_priority)
 
         processed: List[FilingDilution] = []
         rag_results: List[ScanResult] = []
@@ -115,9 +161,22 @@ class ScanPipeline:
                     has_atm=ext.has_atm,
                     has_full_ratchet=ext.has_full_ratchet,
                     has_prefunded_warrants=ext.has_prefunded_warrants,
+                    is_shelf_takedown=ext.is_shelf_takedown,
+                    is_rights_offering=ext.is_rights_offering,
+                    is_overnight_offering=ext.is_overnight_offering,
+                    is_block_trade=ext.is_block_trade,
+                    is_secondary_offering=ext.is_secondary_offering,
+                    is_primary_offering=ext.is_primary_offering,
+                    is_best_efforts=ext.is_best_efforts,
+                    is_firm_commitment=ext.is_firm_commitment,
+                    is_global_offering=ext.is_global_offering,
+                    is_continuous_offering=ext.is_continuous_offering,
+                    is_spot_offering=ext.is_spot_offering,
+                    is_warrant_offering=ext.is_warrant_offering,
                     risk_level=dilution.risk_level,
-                    summary=", ".join(ext.matched_keywords) or None,
+                    summary=", ".join(ext.matched_keywords) or FORM_DESCRIPTIONS.get(meta.form_type) or None,
                     source_url=url,
+                    warrants_detail=ext.warrants_detail,
                 )
                 self.db.save_dilution_alert(filing)
                 processed.append(filing)
