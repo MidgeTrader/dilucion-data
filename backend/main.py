@@ -129,7 +129,7 @@ def cmd_report(args: argparse.Namespace) -> int:
 def cmd_db_init(_: argparse.Namespace) -> int:
     from db.database import Database
     Database().init()
-    print("Database initialized (Parquet + optional Supabase).")
+    print("Database initialized (Parquet + SQLite).")
     return 0
 
 
@@ -169,7 +169,7 @@ def cmd_tickers_refresh(_: argparse.Namespace) -> int:
 
 def cmd_serve(args: argparse.Namespace) -> int:
     import uvicorn
-    from fastapi import FastAPI, HTTPException
+    from fastapi import FastAPI, HTTPException, Request
     from fastapi.middleware.cors import CORSMiddleware
     from pydantic import BaseModel
 
@@ -184,11 +184,27 @@ def cmd_serve(args: argparse.Namespace) -> int:
     app = FastAPI(title="SEC Dilution Tracker API", version="2.0.0")
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=[settings.frontend_url, "http://localhost:3000"],
+        allow_origins=[settings.frontend_url, "http://localhost:3000", "http://localhost:3001"],
         allow_credentials=True,
         allow_methods=["*"],
         allow_headers=["*"],
     )
+    # --- IP-based rate limiter for /rag endpoint ---
+    import time as _time
+    from collections import defaultdict
+    _rag_requests: dict[str, list[float]] = defaultdict(list)
+    _RAG_RATE_LIMIT = 20
+    _RAG_RATE_WINDOW = 60.0
+
+    def _check_rag_rate_limit(client_ip: str) -> None:
+        now = _time.time()
+        window_start = now - _RAG_RATE_WINDOW
+        ts_list = _rag_requests[client_ip]
+        _rag_requests[client_ip] = [t for t in ts_list if t > window_start]
+        if len(_rag_requests[client_ip]) >= _RAG_RATE_LIMIT:
+            raise HTTPException(429, "Rate limit exceeded for /rag (20 req/min). Try again later.")
+        _rag_requests[client_ip].append(now)
+
     db = Database()
     enrichment = DataEnrichment()
 
@@ -204,7 +220,9 @@ def cmd_serve(args: argparse.Namespace) -> int:
         return {"status": "ok", "version": "2.0.0"}
 
     @app.post("/rag", response_model=RAGResponse)
-    def rag_endpoint(body: RagBody):
+    def rag_endpoint(body: RagBody, request: Request):
+        client_ip = request.client.host if request.client else "unknown"
+        _check_rag_rate_limit(client_ip)
         try:
             engine = RAGEngine()
             question = body.question
@@ -234,13 +252,34 @@ def cmd_serve(args: argparse.Namespace) -> int:
             profile.company_name = profile.company_name or company.company_name
             profile.shares_outstanding = profile.shares_outstanding or company.shares_outstanding
         filings = db.parquet.get_filings_by_ticker(ticker)
-        candles = enrichment.polygon.get_candles(ticker)
+        candles = enrichment.polygon.get_candles(ticker, days=365)
+        news = enrichment.get_company_news(
+            ticker,
+            company_name=profile.company_name,
+            filings=filings,
+            limit=30,
+        )
+        news_payload = [n.model_dump() for n in news]
         return {
             "profile": profile.model_dump(),
             "filings": [f.model_dump() for f in filings],
             "candles": [c.model_dump() for c in candles],
             "risk": _risk(filings).model_dump(),
+            "news": news_payload,
+            "articles": news_payload,
         }
+
+    @app.get("/ticker/{ticker}/news")
+    def ticker_news(ticker: str, limit: int = 30):
+        profile = enrichment.get_ticker_profile(ticker)
+        filings = db.parquet.get_filings_by_ticker(ticker)
+        news = enrichment.get_company_news(
+            ticker,
+            company_name=profile.company_name,
+            filings=filings,
+            limit=limit,
+        )
+        return [n.model_dump() for n in news]
 
     @app.get("/dilution/top")
     def top_dilution(limit: int = 20):
@@ -284,6 +323,8 @@ def cmd_serve(args: argparse.Namespace) -> int:
 
 
 def cmd_dashboard(_: argparse.Namespace) -> int:
+    """DEPRECATED — use the Next.js frontend (npm run dev in frontend/) instead."""
+    logger.warning("Streamlit dashboard is deprecated. Use the Next.js frontend (cd frontend && npm run dev) instead.")
     import streamlit as st
     from apis.data_enrichment import DataEnrichment
     from db.parquet_db import ParquetDB
@@ -319,8 +360,7 @@ def cmd_mode(_: argparse.Namespace) -> int:
     s = get_settings()
     db = Database()
     print(f"Mode:           {db.get_mode()}")
-    print(f"PRIVATE_MODE:   {s.private_mode}")
-    print(f"Supabase:       {'yes' if db.supabase_enabled else 'no'}")
+    print(f"Storage:        local (Parquet + SQLite)")
     print(f"SQLite path:    {s.sqlite_db_path}")
     print(f"Telegram token: {'set' if s.telegram_bot_token else 'NOT SET'}")
     print(f"Admin chat ID:  {s.telegram_admin_chat_id or 'NOT SET'}")

@@ -6,7 +6,7 @@ import logging
 import sqlite3
 import time
 import xml.etree.ElementTree as ET
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Callable, List, Optional, Set
 
@@ -54,7 +54,7 @@ class RSSMonitor:
         with sqlite3.connect(self.dedup_db) as conn:
             conn.execute(
                 "INSERT OR IGNORE INTO seen (accession, seen_at) VALUES (?, ?)",
-                (accession, datetime.utcnow().isoformat()),
+                (accession, datetime.now(timezone.utc).isoformat()),
             )
             conn.commit()
 
@@ -94,7 +94,7 @@ class RSSMonitor:
                     form_type=form_type,
                     filing_url=link,
                     summary=summary[:500] if summary else None,
-                    detected_at=datetime.utcnow(),
+                    detected_at=datetime.now(timezone.utc),
                 )
             )
         return alerts

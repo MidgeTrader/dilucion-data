@@ -22,13 +22,13 @@ class Settings(BaseSettings):
     deepseek_api_key: str = Field(default="", alias="DEEPSEEK_API_KEY")
     openai_api_key: str = Field(default="", alias="OPENAI_API_KEY")
     polygon_api_key: str = Field(default="", alias="POLYGON_API_KEY")
+    massive_api_key: str = Field(default="", alias="MASSIVE_API_KEY")
     finnhub_api_key: str = Field(default="", alias="FINNHUB_API_KEY")
+    benzinga_api_key: str = Field(default="", alias="BENZINGA_API_KEY")
+    eodhd_api_key: str = Field(default="", alias="EODHD_API_KEY")
     stocksera_api_key: str = Field(default="", alias="STOCKSERA_API_KEY")
-    supabase_url: str = Field(default="", alias="SUPABASE_URL")
-    supabase_key: str = Field(default="", alias="SUPABASE_KEY")
     telegram_bot_token: str = Field(default="", alias="TELEGRAM_BOT_TOKEN")
     telegram_admin_chat_id: int = Field(default=0, alias="TELEGRAM_ADMIN_CHAT_ID")
-    private_mode: bool = Field(default=True, alias="PRIVATE_MODE")
 
     sec_user_agent: str = Field(
         default="SecDilutionTracker user@example.com",
@@ -38,7 +38,7 @@ class Settings(BaseSettings):
     data_dir: Path = Field(default=Path("../data"), alias="DATA_DIR")
     chroma_dir: Path = Field(default=Path("../data/chroma"), alias="CHROMA_DIR")
 
-    api_host: str = Field(default="0.0.0.0", alias="API_HOST")
+    api_host: str = Field(default="127.0.0.1", alias="API_HOST")
     api_port: int = Field(default=8000, alias="API_PORT")
     frontend_url: str = Field(default="http://localhost:3000", alias="FRONTEND_URL")
 

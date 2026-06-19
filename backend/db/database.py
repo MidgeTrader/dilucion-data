@@ -1,4 +1,4 @@
-"""Unified database: SQLite (private mode) or Supabase/PostgreSQL (SaaS mode)."""
+"""Local data layer: Parquet files + SQLite."""
 
 from __future__ import annotations
 
@@ -6,12 +6,9 @@ import json
 import logging
 import sqlite3
 from contextlib import contextmanager
-from datetime import datetime, timedelta
+from datetime import datetime, timezone, timedelta
 from pathlib import Path
 from typing import Any, Dict, Generator, List, Optional
-
-import httpx
-from tenacity import retry, stop_after_attempt, wait_exponential
 
 from config import get_settings
 from db.parquet_db import ParquetDB
@@ -27,7 +24,7 @@ RISK_TO_SQL = {
 
 
 class SQLiteBackend:
-    """SQLite storage for private/Telegram mode."""
+    """SQLite storage for alerts, watchlist, RAG history, bot state."""
 
     def __init__(self, db_path: Path, schema_path: Path) -> None:
         self.db_path = db_path
@@ -146,7 +143,7 @@ class SQLiteBackend:
         return [dict(r) for r in rows]
 
     def get_recent_alerts(self, hours: int = 24, limit: int = 50) -> List[dict]:
-        since = (datetime.utcnow() - timedelta(hours=hours)).isoformat()
+        since = (datetime.now(timezone.utc) - timedelta(hours=hours)).isoformat()
         with self._conn() as conn:
             rows = conn.execute(
                 """
@@ -201,7 +198,7 @@ class SQLiteBackend:
                 INSERT INTO bot_state (key, value, updated_at) VALUES (?, ?, ?)
                 ON CONFLICT(key) DO UPDATE SET value=excluded.value, updated_at=excluded.updated_at
                 """,
-                (key, value, datetime.utcnow().isoformat()),
+                (key, value, datetime.now(timezone.utc).isoformat()),
             )
 
     def get_state(self, key: str) -> Optional[str]:
@@ -227,115 +224,31 @@ class SQLiteBackend:
 
 
 class Database:
-    """
-    Auto-detect mode:
-    - PRIVATE_MODE=true OR no SUPABASE_URL → SQLite (+ Parquet sync)
-    - SUPABASE_URL + PRIVATE_MODE=false → Supabase PostgreSQL (+ Parquet sync)
-    """
+    """Parquet lake + SQLite for local-only storage."""
 
     def __init__(self) -> None:
         self.settings = get_settings()
         self.parquet = ParquetDB()
         self.parquet.inicializar()
-        self.mode = self._detect_mode()
-        self.sqlite: Optional[SQLiteBackend] = None
-        self.supabase_enabled = self.mode == "supabase"
-
-        if self.mode == "sqlite":
-            schema = Path(__file__).parent / "schema.sqlite.sql"
-            self.sqlite = SQLiteBackend(self.settings.sqlite_db_path, schema)
-            self.sqlite.init_schema()
-
-    @staticmethod
-    def _detect_mode() -> str:
-        settings = get_settings()
-        if settings.private_mode:
-            return "sqlite"
-        if settings.supabase_url and settings.supabase_key:
-            return "supabase"
-        return "sqlite"
-
-    def get_mode(self) -> str:
-        return self.mode
-
-    def _headers(self) -> dict:
-        return {
-            "apikey": self.settings.supabase_key,
-            "Authorization": f"Bearer {self.settings.supabase_key}",
-            "Content-Type": "application/json",
-            "Prefer": "return=minimal",
-        }
-
-    @retry(stop=stop_after_attempt(3), wait=wait_exponential(min=1, max=10), reraise=False)
-    def _supabase_post(self, table: str, record: dict) -> bool:
-        if not self.supabase_enabled:
-            return False
-        url = f"{self.settings.supabase_url.rstrip('/')}/rest/v1/{table}"
-        try:
-            with httpx.Client(timeout=20) as client:
-                resp = client.post(url, json=record, headers=self._headers())
-                return resp.status_code in (200, 201, 409)
-        except Exception as exc:
-            logger.error("Supabase POST error: %s", exc)
-            return False
-
-    @retry(stop=stop_after_attempt(3), wait=wait_exponential(min=1, max=10), reraise=False)
-    def _supabase_get(self, table: str, params: Optional[dict] = None) -> List[dict]:
-        if not self.supabase_enabled:
-            return []
-        url = f"{self.settings.supabase_url.rstrip('/')}/rest/v1/{table}"
-        try:
-            with httpx.Client(timeout=20) as client:
-                resp = client.get(url, params=params or {}, headers=self._headers())
-                if resp.status_code == 200:
-                    return resp.json()
-        except Exception as exc:
-            logger.error("Supabase GET error: %s", exc)
-        return []
+        schema = Path(__file__).parent / "schema.sqlite.sql"
+        self.sqlite = SQLiteBackend(self.settings.sqlite_db_path, schema)
+        self.sqlite.init_schema()
 
     def init(self) -> None:
         self.parquet.inicializar()
-        if self.sqlite:
-            self.sqlite.init_schema()
-        logger.info("Database ready — mode=%s", self.mode)
+        self.sqlite.init_schema()
+        logger.info("Database ready — Parquet + SQLite")
+
+    def get_mode(self) -> str:
+        return "sqlite"
 
     def save_company(self, company: Company) -> None:
         self.parquet.upsert_company(company)
-        if self.sqlite:
-            self.sqlite.upsert_company(company)
-        self._supabase_post("companies", {
-            "cik": company.cik,
-            "ticker": company.ticker,
-            "company_name": company.company_name,
-            "float_shares": company.float_shares,
-            "shares_outstanding": company.shares_outstanding,
-            "sector": company.sector,
-            "updated_at": datetime.utcnow().isoformat(),
-        })
+        self.sqlite.upsert_company(company)
 
     def save_dilution_alert(self, filing: FilingDilution) -> None:
         self.parquet.upsert_filing(filing)
-        if self.sqlite:
-            self.sqlite.insert_alert(filing)
-        self._supabase_post("dilution_alerts", {
-            "cik": filing.cik,
-            "ticker": filing.ticker,
-            "accession_number": filing.accession_number,
-            "form_type": filing.form_type,
-            "filed_date": filing.filed_date.isoformat(),
-            "shelf_amount_usd": filing.shelf_amount_usd,
-            "dilution_percentage": filing.dilution_percentage,
-            "has_atm": filing.has_atm,
-            "has_full_ratchet": filing.has_full_ratchet,
-            "has_prefunded_warrants": filing.has_prefunded_warrants,
-            "warrants_found": filing.warrants_found,
-            "risk_level": filing.risk_level.value if filing.risk_level else None,
-            "filing_url": filing.source_url,
-            "summary": filing.summary,
-            "created_at": datetime.utcnow().isoformat(),
-        })
-
-    insert_alert = save_dilution_alert
+        self.sqlite.insert_alert(filing)
 
     def save_rag_analysis(
         self,
@@ -344,76 +257,44 @@ class Database:
         question: str,
         response: RAGResponse,
     ) -> None:
-        if self.sqlite:
-            self.sqlite.insert_rag(cik, accession, question, response)
-        self._supabase_post("rag_analyses", {
-            "cik": cik,
-            "accession_number": accession,
-            "question": question,
-            "answer": response.answer[:10000],
-            "source_chunks": [c.content[:500] for c in response.citations[:5]],
-            "model_used": response.model,
-            "created_at": datetime.utcnow().isoformat(),
-        })
+        self.sqlite.insert_rag(cik, accession, question, response)
 
     def get_top(self, limit: int = 10) -> List[dict]:
-        if self.sqlite:
-            rows = self.sqlite.get_top(limit)
-            if rows:
-                return rows
-        remote = self._supabase_get("dilution_alerts", {
-            "order": "dilution_percentage.desc.nullslast",
-            "limit": str(limit),
-        })
-        if remote:
-            return remote
+        rows = self.sqlite.get_top(limit)
+        if rows:
+            return rows
         return [f.model_dump() for f in self.parquet.query_top_dilution(limit)]
 
     def get_recent_alerts(self, hours: int = 24, limit: int = 50) -> List[dict]:
-        if self.sqlite:
-            rows = self.sqlite.get_recent_alerts(hours, limit)
-            if rows:
-                return rows
+        rows = self.sqlite.get_recent_alerts(hours, limit)
+        if rows:
+            return rows
         return [f.model_dump() for f in self.parquet.query_top_dilution(limit)]
 
     def get_alerts_feed(self, limit: int = 50) -> List[dict]:
         return self.get_recent_alerts(hours=168, limit=limit)
 
     def add_watchlist(self, chat_id: int, cik: str, ticker: str) -> bool:
-        if not self.sqlite:
-            logger.warning("Watchlist requires SQLite private mode")
-            return False
         return self.sqlite.add_watchlist(chat_id, cik, ticker)
 
     def remove_watchlist(self, chat_id: int, ticker: str) -> bool:
-        if not self.sqlite:
-            return False
         return self.sqlite.remove_watchlist(chat_id, ticker)
 
     def get_watchlist(self, chat_id: int) -> List[dict]:
-        if self.sqlite:
-            return self.sqlite.get_watchlist(chat_id)
-        return []
+        return self.sqlite.get_watchlist(chat_id)
 
     def get_watchers_for_ticker(self, ticker: str) -> List[int]:
-        if self.sqlite:
-            return self.sqlite.get_all_watchers_for_ticker(ticker)
-        return []
+        return self.sqlite.get_all_watchers_for_ticker(ticker)
 
     def set_bot_state(self, key: str, value: str) -> None:
-        if self.sqlite:
-            self.sqlite.set_state(key, value)
+        self.sqlite.set_state(key, value)
 
     def get_bot_state(self, key: str) -> Optional[str]:
-        if self.sqlite:
-            return self.sqlite.get_state(key)
-        return None
+        return self.sqlite.get_state(key)
 
     def stats(self) -> Dict[str, Any]:
         base = self.parquet.report_summary()
-        base["mode"] = self.mode
-        base["private_mode"] = self.settings.private_mode
-        base["supabase_enabled"] = self.supabase_enabled
-        if self.sqlite:
-            base.update(self.sqlite.stats())
+        base["mode"] = "sqlite"
+        base["storage"] = "local"
+        base.update(self.sqlite.stats())
         return base

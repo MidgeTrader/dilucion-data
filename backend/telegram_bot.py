@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional
 
 from telegram import Update
@@ -220,7 +220,7 @@ class TelegramBot:
                 )
                 self.db.save_dilution_alert(alert)
                 count += 1
-            self.db.set_bot_state("last_scan", datetime.utcnow().isoformat())
+            self.db.set_bot_state("last_scan", datetime.now(timezone.utc).isoformat())
             await update.message.reply_text(f"✅ Scan completo: {count} filings críticos detectados")
         except Exception as exc:
             await update.message.reply_text(f"❌ Error en scan: {exc}")
@@ -231,7 +231,7 @@ class TelegramBot:
         text = (
             f"🟢 *Bot Status*\n"
             f"Mode: `{stats.get('mode', '?')}`\n"
-            f"Private: `{stats.get('private_mode', '?')}`\n"
+            f"Storage: `{stats.get('storage', 'local')}`\n"
             f"Filings: {stats.get('filings', stats.get('total_filings', 0))}\n"
             f"Companies: {stats.get('companies', stats.get('total_companies', 0))}\n"
             f"Last scan: {last_scan}\n"
@@ -247,7 +247,7 @@ class TelegramBot:
             cik=alert.cik,
             ticker=None,
             form_type=alert.form_type,
-            filed_date=datetime.utcnow().date(),
+            filed_date=datetime.now(timezone.utc).date(),
             source_url=alert.filing_url,
             summary=alert.summary,
             risk_level=RiskLevel.HIGH,

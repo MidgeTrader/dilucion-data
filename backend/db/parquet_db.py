@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import logging
-from datetime import date, datetime
+from datetime import date, datetime, timezone
 from typing import List, Optional
 
 import pandas as pd
@@ -62,7 +62,7 @@ class ParquetDB:
     def upsert_company(self, company: Company) -> None:
         df = self._read_companies()
         record = company.model_dump()
-        record["updated_at"] = datetime.utcnow().isoformat()
+        record["updated_at"] = datetime.now(timezone.utc).isoformat()
         if not df.empty and str(company.cik) in df["cik"].astype(str).values:
             mask = df["cik"].astype(str) == str(company.cik)
             for col, val in record.items():
@@ -130,9 +130,6 @@ class ParquetDB:
         )
         self.upsert_filing(filing)
         return filing
-
-    def consultar_top_diluciones(self, limit: int = 20) -> List[FilingDilution]:
-        return self.query_top_dilution(limit)
 
     def query_top_dilution(self, limit: int = 20) -> List[FilingDilution]:
         df = self._read_filings()

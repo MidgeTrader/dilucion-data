@@ -4,8 +4,6 @@ from __future__ import annotations
 
 import logging
 import re
-import time
-from collections import deque
 from dataclasses import dataclass, field
 from typing import Optional
 from urllib.parse import urlparse
@@ -15,6 +13,7 @@ from bs4 import BeautifulSoup
 from pydantic import BaseModel, Field
 from tenacity import retry, retry_if_exception_type, stop_after_attempt, wait_exponential
 
+from apis._rate_limit import RateLimiter
 from config import get_settings
 
 logger = logging.getLogger(__name__)
@@ -50,22 +49,6 @@ class ParsedFiling:
     cik: Optional[str]
     title: Optional[str]
     extraction: ExtractionResult = field(default_factory=ExtractionResult)
-
-
-class RateLimiter:
-    def __init__(self, max_calls: int, period_seconds: float = 1.0) -> None:
-        self.max_calls = max_calls
-        self.period_seconds = period_seconds
-        self._timestamps: deque[float] = deque()
-
-    def wait(self) -> None:
-        now = time.time()
-        while self._timestamps and now - self._timestamps[0] >= self.period_seconds:
-            self._timestamps.popleft()
-        if len(self._timestamps) >= self.max_calls:
-            time.sleep(self.period_seconds - (now - self._timestamps[0]) + 0.05)
-        self._timestamps.append(time.time())
-        time.sleep(0.1)
 
 
 class SECParser:
