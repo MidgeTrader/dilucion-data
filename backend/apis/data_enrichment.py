@@ -33,7 +33,7 @@ class DataEnrichment:
         if poly and poly.get("results"):
             r = poly["results"]
             profile.company_name = r.get("name")
-            # Polygon's sic_description is industry-level, NOT sector
+            # Polygon's sic_description is the most detailed industry data
             profile.industry = r.get("sic_description")
             profile.country = r.get("locale", "US")
             profile.exchange = r.get("primary_exchange", "").replace("X", "") if r.get("primary_exchange") else None
@@ -47,7 +47,6 @@ class DataEnrichment:
         fh = self.finnhub.get_company_profile(ticker)
         if fh:
             profile.company_name = profile.company_name or fh.get("name")
-            profile.sector = profile.sector or fh.get("sector")
             profile.industry = profile.industry or fh.get("finnhubIndustry")
             profile.country = fh.get("country", profile.country)
             profile.exchange = profile.exchange or fh.get("exchange", "").split("(")[0].strip()
@@ -56,10 +55,10 @@ class DataEnrichment:
             if fh.get("shareOutstanding"):
                 profile.shares_outstanding = profile.shares_outstanding or (float(fh["shareOutstanding"]) * 1_000_000)
 
-        # Fallback completo a yfinance para todo lo que falte
+        # yfinance: única fuente confiable para sector
         yf_profile = self.yfinance.get_profile_fields(ticker)
         profile.company_name = profile.company_name or yf_profile.get("company_name")
-        profile.sector = profile.sector or yf_profile.get("sector")
+        profile.sector = yf_profile.get("sector")  # siempre de yfinance
         profile.industry = profile.industry or yf_profile.get("industry")
         profile.country = profile.country or yf_profile.get("country")
         profile.exchange = profile.exchange or yf_profile.get("exchange")
@@ -125,7 +124,6 @@ class DataEnrichment:
             db.upsert_company(Company(
                 cik=cik, ticker=ticker,
                 company_name=item.get("name", ticker),
-                sector=item.get("sic_description"),
                 country=item.get("locale", "US"),
             ))
             count += 1
