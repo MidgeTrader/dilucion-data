@@ -1,0 +1,40 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+env/
+*.egg
+
+# Environment
+.env
+.env.local
+.env.*.local
+
+# Data & cache
+data/
+*.parquet
+*.sqlite
+chroma/
+
+# Node
+node_modules/
+.next/
+out/
+*.log
+npm-debug.log*
+
+# IDE
+.idea/
+.vscode/
+*.swp
+.DS_Store
+
+# Build
+dist/
+build/
+*.tsbuildinfo
+
+# Streamlit
+.streamlit/
