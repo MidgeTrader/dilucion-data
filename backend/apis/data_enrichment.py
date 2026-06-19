@@ -5,13 +5,14 @@ from __future__ import annotations
 import logging
 
 from apis.finnhub_client import FinnhubClient
+from apis.news_aggregator import NewsAggregator
 from apis.polygon_client import PolygonClient
 from apis.stocksera_client import StockseraClient
 from apis.yfinance_client import YFinanceClient
 from cache import TTLCache
 from config import get_settings
 from db.parquet_db import ParquetDB
-from models import Company, TickerProfile
+from models import Company, NewsArticle, TickerProfile
 
 logger = logging.getLogger(__name__)
 
@@ -24,6 +25,7 @@ class DataEnrichment:
         self.finnhub = FinnhubClient(self.cache)
         self.stocksera = StockseraClient(self.cache)
         self.yfinance = YFinanceClient(self.cache)
+        self.news = NewsAggregator(self.cache)
 
     def get_ticker_profile(self, ticker: str) -> TickerProfile:
         profile = TickerProfile(ticker=ticker.upper())
@@ -31,30 +33,84 @@ class DataEnrichment:
         if poly and poly.get("results"):
             r = poly["results"]
             profile.company_name = r.get("name")
-            profile.sector = r.get("sic_description") or r.get("market")
+            # Polygon's sic_description is industry-level, NOT sector
+            profile.industry = r.get("sic_description")
             profile.country = r.get("locale", "US")
+            profile.exchange = r.get("primary_exchange", "").replace("X", "") if r.get("primary_exchange") else None
             if r.get("share_class_shares_outstanding"):
                 profile.shares_outstanding = float(r["share_class_shares_outstanding"])
+            if r.get("market_cap"):
+                profile.market_cap = float(r["market_cap"])
+            if r.get("employees"):
+                profile.employees = int(r["employees"])
+
         fh = self.finnhub.get_company_profile(ticker)
         if fh:
             profile.company_name = profile.company_name or fh.get("name")
-            profile.sector = profile.sector or fh.get("finnhubIndustry")
+            profile.sector = profile.sector or fh.get("sector")
+            profile.industry = profile.industry or fh.get("finnhubIndustry")
             profile.country = fh.get("country", profile.country)
+            profile.exchange = profile.exchange or fh.get("exchange", "").split("(")[0].strip()
+            if fh.get("marketCapitalization"):
+                profile.market_cap = profile.market_cap or float(fh["marketCapitalization"])
             if fh.get("shareOutstanding"):
-                profile.shares_outstanding = float(fh["shareOutstanding"]) * 1_000_000
+                profile.shares_outstanding = profile.shares_outstanding or (float(fh["shareOutstanding"]) * 1_000_000)
+
+        # Fallback completo a yfinance para todo lo que falte
+        yf_profile = self.yfinance.get_profile_fields(ticker)
+        profile.company_name = profile.company_name or yf_profile.get("company_name")
+        profile.sector = profile.sector or yf_profile.get("sector")
+        profile.industry = profile.industry or yf_profile.get("industry")
+        profile.country = profile.country or yf_profile.get("country")
+        profile.exchange = profile.exchange or yf_profile.get("exchange")
+        profile.description = profile.description or yf_profile.get("longBusinessSummary")
+        profile.about = profile.about or profile.description
+        profile.website = profile.website or yf_profile.get("website")
+        if yf_profile.get("employees"):
+            profile.employees = profile.employees or yf_profile.get("employees")
+        if yf_profile.get("market_cap"):
+            profile.market_cap = profile.market_cap or yf_profile.get("market_cap")
+        if yf_profile.get("enterprise_value"):
+            profile.enterprise_value = yf_profile.get("enterprise_value")
+        if yf_profile.get("avg_volume"):
+            profile.avg_volume = yf_profile.get("avg_volume")
+        if yf_profile.get("cash_per_share"):
+            profile.cash_per_share = yf_profile.get("cash_per_share")
+        if yf_profile.get("institutional_ownership"):
+            profile.institutional_ownership = yf_profile.get("institutional_ownership")
+        if yf_profile.get("days_to_cover"):
+            profile.days_to_cover = yf_profile.get("days_to_cover")
+        if not profile.shares_outstanding:
+            profile.shares_outstanding = yf_profile.get("shares_outstanding")
+
         quote = self.finnhub.get_quote(ticker)
         if quote:
             profile.price = quote.price
             profile.change_percent = quote.change_percent
         else:
-            profile.price = self.yfinance.get_price(ticker)
+            yf_quote = self.yfinance.get_quote(ticker)
+            if yf_quote:
+                profile.price = yf_quote.price
+                profile.change_percent = yf_quote.change_percent
+
         if not profile.shares_outstanding:
             profile.shares_outstanding = self.yfinance.get_shares_outstanding(ticker)
+
         short = self.stocksera.get_short_interest(ticker)
         if short:
             profile.borrow_rate = short.borrow_rate
             profile.short_percent_float = short.short_percent_float
+
         return profile
+
+    def get_company_news(
+        self,
+        ticker: str,
+        company_name: str | None = None,
+        filings=None,
+        limit: int = 30,
+    ) -> list[NewsArticle]:
+        return self.news.get_all_news(ticker, company_name, filings, limit=limit)
 
     def refresh_tickers_to_parquet(self) -> int:
         db = ParquetDB()
