@@ -28,7 +28,8 @@ export default function DilutionHeatmap({ data, loading, error }) {
     );
   }
 
-  if (!data || data.length === 0) {
+  const realData = (data || []).filter(d => d.dilution_percentage != null && d.dilution_percentage > 0);
+  if (!realData || realData.length === 0) {
     return (
       <div className="card">
         <h3 className="text-sm font-semibold text-gray-300 mb-2 uppercase tracking-wide">
@@ -39,7 +40,7 @@ export default function DilutionHeatmap({ data, loading, error }) {
     );
   }
 
-  const maxDilution = Math.max(...data.map((d) => d.dilution_percentage || 0), 1);
+  const maxDilution = Math.max(...realData.map((d) => d.dilution_percentage || 0), 1);
 
   return (
     <div className="card">
@@ -47,7 +48,7 @@ export default function DilutionHeatmap({ data, loading, error }) {
         Dilution Heatmap — Top Risks
       </h3>
       <div className="space-y-2">
-        {data.map((item, i) => {
+        {realData.map((item, i) => {
           const pct = item.dilution_percentage || 0;
           const width = maxDilution > 0 ? `${Math.max((pct / maxDilution) * 100, 4)}%` : '4%';
           return (

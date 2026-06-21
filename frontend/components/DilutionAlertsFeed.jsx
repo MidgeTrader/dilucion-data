@@ -29,7 +29,9 @@ export default function DilutionAlertsFeed({ alerts, loading, error }) {
     );
   }
 
-  if (!alerts?.length) {
+  const realAlerts = (alerts || []).filter(a => a.dilution_percentage != null && a.dilution_percentage > 0);
+
+  if (!realAlerts?.length) {
     return (
       <div className="card">
         <h3 className="text-sm font-semibold text-gray-300 mb-2 uppercase tracking-wide">Alerts Feed</h3>
@@ -46,7 +48,7 @@ export default function DilutionAlertsFeed({ alerts, loading, error }) {
         </h3>
       </div>
       <ul className="divide-y divide-surface-border/50 max-h-96 overflow-y-auto">
-        {alerts.map((a) => (
+        {realAlerts.map((a) => (
           <li key={a.accession_number} className="px-4 py-3 hover:bg-surface-hover transition-colors">
             <div className="flex justify-between items-start gap-2">
               <div>

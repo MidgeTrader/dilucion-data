@@ -127,7 +127,7 @@ class GapScreener:
                             "status": "Active",
                             "reason": self._fmt_reason(cells[5]) if len(cells) > 5 else "",
                             "date": cells[0] if len(cells) > 0 else "",
-                            "halt_time": cells[1].replace(".000", "") if len(cells) > 1 else "",
+                            "halt_time": cells[1].split(".")[0] if len(cells) > 1 else "",
                             "resume_time": cells[6] if len(cells) > 6 else "",
                             "duration": cells[6] if len(cells) > 6 else "",
                             "market": cells[4] if len(cells) > 4 else "",

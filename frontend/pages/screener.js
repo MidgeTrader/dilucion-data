@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import Head from 'next/head';
+import TopNav from '../components/TopNav';
 const BACKEND = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8000';
 
 function fmtNum(n) {
@@ -51,6 +52,7 @@ export default function ScreenerPage() {
   return (
     <>
       <Head><title>Screener — Dilucion Data</title></Head>
+      <TopNav />
       <div className="flex items-center justify-between px-6 py-3 border-b border-surface-border bg-surface">
         <div className="flex items-center gap-4">
           <h1 className="text-lg font-bold text-white">Scanner</h1>
@@ -135,7 +137,7 @@ export default function ScreenerPage() {
                 ) : data.map((row, i) => (
                   <tr key={row.symbol} className={`border-b border-surface-border/20 hover:bg-surface-hover/50 ${i % 2 === 0 ? 'bg-surface-muted/20' : ''}`}>
                     <td className="px-2 py-2.5">
-                      <a href={`/ticker/${row.symbol}`} className="font-mono text-sm font-semibold text-accent-teal hover:text-white">
+                      <a href={`/ticker/${row.symbol}/dilution`} className="font-mono text-sm font-semibold text-accent-teal hover:text-white">
                         {row.symbol} <span className="text-[10px] text-accent-green">▴</span>
                       </a>
                     </td>

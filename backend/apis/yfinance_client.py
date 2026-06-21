@@ -91,7 +91,7 @@ class YFinanceClient:
                 "market_cap": float(info["marketCap"]) if info.get("marketCap") else None,
                 "enterprise_value": float(info["enterpriseValue"]) if info.get("enterpriseValue") else None,
                 "avg_volume": float(info["averageVolume"]) if info.get("averageVolume") else None,
-                "cash_per_share": float(info["totalCashPerShare"]) if info.get("totalCashPerShare") else None,
+                "cash_per_share": (float(info["totalCash"]) / float(info["sharesOutstanding"])) if info.get("totalCash") and info.get("sharesOutstanding") and info["sharesOutstanding"] > 0 else None,
                 "institutional_ownership": (
                     round(float(info["heldPercentInstitutions"]) * 100, 2)
                     if info.get("heldPercentInstitutions") else None

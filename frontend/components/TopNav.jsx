@@ -1,14 +1,20 @@
 import Link from 'next/link';
 import { useRouter } from 'next/router';
+import { useState, useEffect } from 'react';
 import SearchBar from './SearchBar';
+import { getLastTicker } from '../lib/lastTicker';
 
 const PLATFORM = [
   { label: 'Home', href: '/' },
-  { label: 'Screener', href: '/monitor' },
+  { label: 'Screener', href: '/screener' },
 ];
 
 export default function TopNav() {
   const router = useRouter();
+  const [mounted, setMounted] = useState(false);
+  const onTicker = router.pathname?.startsWith('/ticker/') ?? false;
+
+  useEffect(() => { setMounted(true); }, []);
 
   return (
     <header className="h-14 border-b border-surface-border bg-surface flex items-center px-4 gap-6 shrink-0">
@@ -31,6 +37,12 @@ export default function TopNav() {
               {item.label}
             </Link>
           ))}
+          {!onTicker && mounted && (
+            <Link href={`/ticker/${getLastTicker()}`}
+              className="text-sm px-2.5 py-1 rounded-md text-accent-teal hover:text-white hover:bg-surface-hover/50 transition-colors">
+              Datos
+            </Link>
+          )}
         </nav>
       </div>
 
