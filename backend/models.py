@@ -145,7 +145,7 @@ class ShortInterestData(BaseModel):
     short_interest: Optional[float] = None
     borrow_rate: Optional[float] = None
     short_percent_float: Optional[float] = None
-    source: str = "stocksera"
+    source: str = "stonktracker"
 
 
 class TickerProfile(BaseModel):

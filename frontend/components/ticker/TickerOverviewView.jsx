@@ -66,7 +66,7 @@ export default function TickerOverviewView({ data, loading, tickerUpper }) {
     { label: 'Cash/Shr', value: p.cash_per_share != null ? `$${p.cash_per_share.toFixed(2)}` : '—' },
     { label: 'Market Cap & Ev', value: `${fmtM(p.market_cap)} / ${fmtM(p.enterprise_value)}` },
     { label: 'Short Interest', value: p.short_percent_float != null ? `${p.short_percent_float}%` : '—' },
-    { label: 'Borrow Rate', value: p.borrow_rate != null ? `${p.borrow_rate.toFixed(4)}%` : '—', highlight: p.borrow_rate > 100 ? 'text-accent-red' : '' },
+    { label: 'Borrow Rate', value: p.borrow_rate != null ? `${p.borrow_rate.toFixed(2)}%` : '—', highlight: p.borrow_rate > 100 ? 'text-accent-red' : '' },
     { label: 'Days to Cover', value: p.days_to_cover ?? '—' },
   ] : [];
 

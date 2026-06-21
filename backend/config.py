@@ -26,7 +26,6 @@ class Settings(BaseSettings):
     finnhub_api_key: str = Field(default="", alias="FINNHUB_API_KEY")
     benzinga_api_key: str = Field(default="", alias="BENZINGA_API_KEY")
     eodhd_api_key: str = Field(default="", alias="EODHD_API_KEY")
-    stocksera_api_key: str = Field(default="", alias="STOCKSERA_API_KEY")
     telegram_bot_token: str = Field(default="", alias="TELEGRAM_BOT_TOKEN")
     telegram_admin_chat_id: int = Field(default=0, alias="TELEGRAM_ADMIN_CHAT_ID")
 
@@ -58,7 +57,6 @@ class Settings(BaseSettings):
 
     polygon_cache_ttl_hours: int = 24
     finnhub_cache_ttl_minutes: int = 5
-    stocksera_cache_ttl_hours: int = 6
 
     @field_validator("data_dir", "chroma_dir", mode="before")
     @classmethod

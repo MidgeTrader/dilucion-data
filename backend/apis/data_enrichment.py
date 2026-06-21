@@ -1,4 +1,4 @@
-"""Aggregates Polygon, Finnhub, Stocksera, yfinance into unified profiles."""
+"""Aggregates Polygon, Finnhub, yfinance, Finviz, stonktracker into unified profiles."""
 
 from __future__ import annotations
 
@@ -8,7 +8,7 @@ from apis.finnhub_client import FinnhubClient
 from apis.finviz_client import FinvizClient
 from apis.news_aggregator import NewsAggregator
 from apis.polygon_client import PolygonClient
-from apis.stocksera_client import StockseraClient
+from apis.stonktracker_client import StonktrackerClient
 from apis.yfinance_client import YFinanceClient
 from cache import TTLCache
 from config import get_settings
@@ -25,7 +25,7 @@ class DataEnrichment:
         self.polygon = PolygonClient(self.cache)
         self.finnhub = FinnhubClient(self.cache)
         self.finviz = FinvizClient(self.cache)
-        self.stocksera = StockseraClient(self.cache)
+        self.stonktracker = StonktrackerClient(self.cache)
         self.yfinance = YFinanceClient(self.cache)
         self.news = NewsAggregator(self.cache)
 
@@ -103,10 +103,11 @@ class DataEnrichment:
         if not profile.shares_outstanding:
             profile.shares_outstanding = self.yfinance.get_shares_outstanding(ticker)
 
-        short = self.stocksera.get_short_interest(ticker)
-        if short:
-            profile.borrow_rate = short.borrow_rate
-            profile.short_percent_float = short.short_percent_float
+        # Stonktracker: borrow fee (cuando no lo den otras fuentes)
+        # short_percent_float NO se toca — Finviz/Yahoo son más fiables
+        st = self.stonktracker.get_borrow_data(ticker)
+        if st and st.borrow_rate is not None:
+            profile.borrow_rate = st.borrow_rate
 
         # Finviz: completa lo que falte de otras fuentes
         fv = self.finviz.get_profile_fields(ticker)
