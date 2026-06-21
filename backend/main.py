@@ -416,6 +416,11 @@ def cmd_serve(args: argparse.Namespace) -> int:
         result = ScanPipeline().scan_ticker(ticker, run_rag=False, max_filings=max_filings)
         return result.model_dump()
 
+    @app.get("/screener/gap")
+    def gap_screener(min_gap: float = 25.0, min_price: float = 0.30, limit: int = 30):
+        from screener import GapScreener
+        return GapScreener().scan(min_gap=min_gap, min_price=min_price, max_results=limit)
+
     def _risk(filings, profile=None) -> RiskAssessment:
         if not filings:
             return RiskAssessment()

@@ -13,8 +13,9 @@ export default function TopNav() {
   return (
     <header className="h-14 border-b border-surface-border bg-surface flex items-center px-4 gap-6 shrink-0">
       <div className="flex items-center gap-4 shrink-0">
-        <Link href="/" className="text-sm font-semibold text-white tracking-tight">
-          Platform
+        <Link href="/" className="flex items-center gap-1.5">
+          <span className="w-7 h-7 rounded-md bg-accent-teal flex items-center justify-center text-xs font-bold text-black">DD</span>
+          <span className="text-sm font-semibold text-white tracking-tight hidden sm:inline">Dilucion Data</span>
         </Link>
         <nav className="hidden sm:flex items-center gap-1">
           {PLATFORM.map((item) => (
