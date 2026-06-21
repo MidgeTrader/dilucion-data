@@ -5,6 +5,7 @@ const NAV = [
   { href: '/', id: 'overview', label: 'Overview', icon: '◈' },
   { href: '/filings', id: 'filings', label: 'Filings', icon: '📄' },
   { href: '/screener', id: 'screener', label: 'Screener', icon: '📊' },
+  { href: '/halts', id: 'halts', label: 'Halts', icon: '⏸' },
   { href: '/monitor', id: 'monitor', label: 'Monitor', icon: '📡' },
   { href: '/#dilution', id: 'dilution', label: 'Dilution', icon: '🔥' },
 ];

@@ -49,10 +49,7 @@ export default function ScreenerPage() {
       <Head><title>Screener — Dilucion Data</title></Head>
       <div className="flex items-center justify-between px-6 py-3 border-b border-surface-border bg-surface">
         <div className="flex items-center gap-4">
-          <h1 className="text-lg font-bold text-white">My Dashboard</h1>
-          <span className="text-xs text-gray-500">Scanner</span>
-          <span className="text-xs text-gray-500">Halts</span>
-          <span className="text-xs text-accent-yellow">Alerts</span>
+          <h1 className="text-lg font-bold text-white">Scanner</h1>
           <span className="text-xs text-accent-green">Closed</span>
         </div>
         <div className="text-xs text-gray-500"><Clock /> - Local time</div>
@@ -83,6 +80,7 @@ export default function ScreenerPage() {
             ))}
           </div>
         )}
+
         {loading ? (
           <div className="space-y-1 animate-pulse">{[1,2,3,4,5].map(i => <div key={i} className="h-8 bg-surface-hover rounded" />)}</div>
         ) : (

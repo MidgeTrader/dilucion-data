@@ -421,6 +421,11 @@ def cmd_serve(args: argparse.Namespace) -> int:
         from screener import GapScreener
         return GapScreener().scan(sort_type=sort_type, min_gap=min_gap, min_price=min_price, max_results=limit)
 
+    @app.get("/screener/halts")
+    def screener_halts():
+        from screener import GapScreener
+        return GapScreener().halts()
+
     def _risk(filings, profile=None) -> RiskAssessment:
         if not filings:
             return RiskAssessment()
