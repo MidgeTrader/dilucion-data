@@ -417,9 +417,9 @@ def cmd_serve(args: argparse.Namespace) -> int:
         return result.model_dump()
 
     @app.get("/screener/gap")
-    def gap_screener(min_gap: float = 25.0, min_price: float = 0.30, limit: int = 30):
+    def gap_screener(sort_type: str = "gainers", min_gap: float = 25.0, min_price: float = 0.30, limit: int = 30):
         from screener import GapScreener
-        return GapScreener().scan(min_gap=min_gap, min_price=min_price, max_results=limit)
+        return GapScreener().scan(sort_type=sort_type, min_gap=min_gap, min_price=min_price, max_results=limit)
 
     def _risk(filings, profile=None) -> RiskAssessment:
         if not filings:
