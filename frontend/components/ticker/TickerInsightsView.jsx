@@ -29,6 +29,32 @@ export default function TickerInsightsView({ data, loading, tickerUpper }) {
 
   return (
     <div className="space-y-4">
+      {/* KPI Bar - 2 column grid */}
+      {data?.profile && (
+        <div className="grid grid-cols-2 gap-3 mb-4">
+          <div className="flex items-center gap-2 p-3 rounded-lg bg-surface-hover/30 border border-surface-border/30">
+            <span className="text-xs text-gray-500">Price</span>
+            <span className={`text-sm font-mono font-semibold ${(data.profile.change_percent || 0) >= 0 ? 'text-accent-green' : 'text-accent-red'}`}>
+              ${(data.profile.price || 0).toFixed(2)}
+            </span>
+          </div>
+          <div className="flex items-center gap-2 p-3 rounded-lg bg-surface-hover/30 border border-surface-border/30">
+            <span className="text-xs text-gray-500">Mkt Cap</span>
+            <span className="text-sm font-mono text-white font-semibold">
+              {data.profile.market_cap != null ? `$${(data.profile.market_cap / 1e6).toFixed(1)}M` : '—'}
+            </span>
+          </div>
+          <div className="flex items-center gap-2 p-3 rounded-lg bg-surface-hover/30 border border-surface-border/30">
+            <span className="text-xs text-gray-500">Country</span>
+            <span className="text-sm text-white">{data.profile.country || '—'}</span>
+          </div>
+          <div className="flex items-center gap-2 p-3 rounded-lg bg-surface-hover/30 border border-surface-border/30">
+            <span className="text-xs text-gray-500">Sector</span>
+            <span className="text-sm text-white truncate">{data.profile.sector || '—'}</span>
+          </div>
+        </div>
+      )}
+
       <div>
         <h1 className="text-xl font-bold text-white">Insights</h1>
         <p className="text-sm text-gray-500 mt-1">
@@ -51,7 +77,7 @@ export default function TickerInsightsView({ data, loading, tickerUpper }) {
         })}
       </div>
 
-      <div className="space-y-3">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
         {insights.map((insight) => {
           const cfg = SEVERITY[insight.severity] || SEVERITY.medium;
           return (

@@ -79,6 +79,7 @@ class CompanyFactsClient:
         dates = recent.get("filingDate", [])
         accessions = recent.get("accessionNumber", [])
         docs = recent.get("primaryDocument", [])
+        descriptions = recent.get("primaryDocDescription", [])
 
         results: List[SECFilingMeta] = []
         for i in range(min(len(forms), limit * 8)):
@@ -89,6 +90,7 @@ class CompanyFactsClient:
             accession = accessions[i].replace("-", "")
             acc_raw = accessions[i]
             primary = docs[i] if i < len(docs) else ""
+            desc = descriptions[i] if i < len(descriptions) else ""
             url = f"https://www.sec.gov/Archives/edgar/data/{cik}/{accession}/{primary}"
             results.append(
                 SECFilingMeta(
@@ -96,6 +98,7 @@ class CompanyFactsClient:
                     form_type=form,
                     filed_date=dates[i],
                     url=url,
+                    description=desc,
                 )
             )
             if len(results) >= limit:

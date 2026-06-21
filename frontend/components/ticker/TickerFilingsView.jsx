@@ -3,10 +3,10 @@ import { useState, useMemo } from 'react';
 // ── AskEdgar-style filing groups ──
 
 const GROUPS = [
-  { key: 'Financials',    forms: ['10-K', '10-Q', '10-K/A', '10-Q/A'] },
-  { key: 'News',          forms: ['8-K', '8-K/A'] },
-  { key: 'Prospectus',    forms: ['S-3', 'S-3/A', '424B2', '424B3', '424B4', '424B5', 'F-1', 'F-3'] },
-  { key: 'Registrations', forms: ['S-1', 'S-1/A', 'S-8', 'DRS', '8-A12B'] },
+  { key: 'Financials',    forms: ['10-K', '10-Q', '10-K/A', '10-Q/A', '20-F', '20-F/A', '40-F'] },
+  { key: 'News',          forms: ['8-K', '8-K/A', '6-K'] },
+  { key: 'Prospectus',    forms: ['S-3', 'S-3/A', '424B2', '424B3', '424B4', '424B5', 'F-1', 'F-3', 'F-3/A', 'POS AM'] },
+  { key: 'Registrations', forms: ['S-1', 'S-1/A', 'S-8', 'DRS', '8-A12B', 'D'] },
   { key: 'Proxies',       forms: ['DEF 14A', 'DEFA14A', 'PRE 14A', 'PREM14A'] },
   { key: 'Ownerships',    forms: ['3', '4', '5', '13G', '13G/A', '13D', '13D/A', 'SCHEDULE 13G', 'SCHEDULE 13G/A'] },
   { key: 'Other',         forms: [] },
@@ -86,19 +86,18 @@ function FilingGroupSection({ groupKey, filings, id }) {
   if (!filings || filings.length === 0) return null;
 
   return (
-    <div id={id} className="scroll-mt-20">
-      <div className="flex items-center gap-3 mb-3 mt-6 first:mt-0">
-        <h3 className="text-sm font-bold text-white uppercase tracking-wider">{groupKey}</h3>
-        <div className="h-px flex-1 bg-surface-border" />
-        <span className="text-xs text-gray-600">{filings.length} filing{filings.length > 1 ? 's' : ''}</span>
+    <div id={id} className="card overflow-hidden scroll-mt-20">
+      <div className="flex items-center gap-2 px-4 py-2.5 border-b border-surface-border bg-surface-muted/30">
+        <h3 className="text-xs font-bold text-white uppercase tracking-wider">{groupKey}</h3>
+        <span className="text-[11px] text-gray-500">({filings.length})</span>
       </div>
-      <div className="card overflow-hidden p-0">
+      <div className="overflow-y-auto max-h-[320px]">
         <table className="w-full text-sm">
           <thead>
             <tr className="text-gray-500 text-xs border-b border-surface-border">
-              <th className="text-left px-4 py-2.5 font-medium w-[120px]">TYPE</th>
-              <th className="text-left px-4 py-2.5 font-medium">HEADLINE</th>
-              <th className="text-right px-4 py-2.5 font-medium whitespace-nowrap w-[140px]">FILED AT</th>
+              <th className="text-left px-4 py-2 font-medium w-[100px]">TYPE</th>
+              <th className="text-left px-4 py-2 font-medium">HEADLINE</th>
+              <th className="text-right px-4 py-2 font-medium whitespace-nowrap w-[120px]">FILED AT</th>
             </tr>
           </thead>
           <tbody>
@@ -272,7 +271,7 @@ export default function TickerFilingsView({ data, loading, tickerUpper }) {
           </table>
         </div>
       ) : (
-        <div className="space-y-2">
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
           {shownGroups.length === 0 ? (
             <p className="text-center py-8 text-sm text-gray-500">
               {search ? 'No filings match your search.' : `No filings found for this category.`}

@@ -1,5 +1,4 @@
 import { useState, useRef, useEffect } from 'react';
-import { DEMO_MODE } from '../lib/mockData';
 
 const DEMO_ANSWERS = {
   dilution: `**Auditoría de dilución (demo) — ${'{ticker}'}\n\n• Shelf S-3 registrado: $25,000,000\n• Dilución estimada vs float: **32.5%** 🔴\n• ATM activo: Sí — sales agent registrado\n• Warrants: 1,200,000 autorizados @ $4.50 exercise\n• Pre-funded warrants detectados\n\n⚠️ Riesgo HIGH — capacidad de dilución significativa vs float de 4.2M shares.`,
@@ -42,7 +41,6 @@ export default function RagChatModal({ ticker, isOpen, onClose, filingUrl }) {
     setMessages((prev) => [...prev, userMsg]);
 
     try {
-      if (DEMO_MODE) {
         await new Promise((r) => setTimeout(r, 800));
         const key = promptType in DEMO_ANSWERS ? promptType : 'default';
         const answer = DEMO_ANSWERS[key].replace(/\{ticker\}/g, ticker || 'TICKER');

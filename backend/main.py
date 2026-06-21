@@ -253,7 +253,7 @@ def cmd_serve(args: argparse.Namespace) -> int:
             profile.shares_outstanding = profile.shares_outstanding or company.shares_outstanding
         filings = db.parquet.get_filings_by_ticker(ticker)
 
-        # Auto-scan si el ticker no tiene filings todavía
+        # Auto-scan si el ticker no tiene filings todavia
         if not filings:
             try:
                 from pipeline import ScanPipeline
@@ -263,7 +263,46 @@ def cmd_serve(args: argparse.Namespace) -> int:
                     profile = result.profile
                     logger.info("Auto-scan completado para %s: %d filings", ticker, result.filings_processed)
             except Exception as exc:
-                logger.warning("Auto-scan falló para %s: %s", ticker, exc)
+                logger.warning("Auto-scan fallo para %s: %s", ticker, exc)
+
+        # Si faltan filings, traerlos de SEC directo (como askedgar.io)
+        from models import FilingDilution
+        from datetime import datetime as _dt
+        if len(filings) < 30 and profile.cik:
+            try:
+                from scanners.company_facts import CompanyFactsClient
+                sec = CompanyFactsClient()
+                sec_filings = sec.get_recent_filings(profile.cik, limit=80)
+                seen = set(f.accession_number for f in filings if f.accession_number)
+                for sf in sec_filings:
+                    if sf.accession_number not in seen:
+                        seen.add(sf.accession_number)
+                        filings.append(FilingDilution(
+                            accession_number=sf.accession_number,
+                            cik=profile.cik, ticker=ticker.upper(),
+                            form_type=sf.form_type,
+                            filed_date=_dt.strptime(sf.filed_date, '%Y-%m-%d').date() if isinstance(sf.filed_date, str) else sf.filed_date,
+                            source_url=str(sf.url),
+                            summary=sf.description or f'Form {sf.form_type}',
+                        ))
+                # Generate rich headlines with DeepSeek for recent filings
+                try:
+                    from dilution_rag import DilutionRAGExtractor
+                    _rag_h = DilutionRAGExtractor()
+                    for _sf in sec_filings[:20]:
+                        _url = str(_sf.url)
+                        _h = _rag_h.generate_headline(_url)
+                        if _h:
+                            for _f in filings:
+                                if getattr(_f, 'accession_number', None) == _sf.accession_number:
+                                    _f.summary = _h
+                                    break
+                except Exception:
+                    pass
+                logger.info("Complementados %d filings desde SEC para %s", len(sec_filings), ticker)
+            except Exception as exc:
+                logger.warning("SEC complement fallo para %s: %s", ticker, exc)
+
         candles = enrichment.polygon.get_candles(ticker, days=365)
         news = enrichment.get_company_news(
             ticker,
@@ -275,7 +314,7 @@ def cmd_serve(args: argparse.Namespace) -> int:
         real_news = [n for n in news if n.source_type not in ("sec", "edgar")]
         news_payload = [n.model_dump() for n in real_news]
         risk = _risk(filings, profile)
-        return {
+        result = {
             "profile": profile.model_dump(),
             "filings": [f.model_dump() for f in filings],
             "candles": [c.model_dump() for c in candles],
@@ -287,6 +326,53 @@ def cmd_serve(args: argparse.Namespace) -> int:
                                                     _insights(filings, profile, risk)),
             "dilution": _dilution_detail(filings, profile, risk),
         }
+        # Generate AI research report in Spanish via DeepSeek
+        try:
+            from dilution_rag import DilutionRAGExtractor
+            _rag_r = DilutionRAGExtractor()
+            _ai_report = _rag_r.generate_research_report(ticker.upper(), {
+                "profile": profile.model_dump() if hasattr(profile, "model_dump") else profile,
+                "filings": [f.model_dump() if hasattr(f, "model_dump") else f for f in filings],
+                "risk": risk.model_dump() if hasattr(risk, "model_dump") else risk,
+            })
+            if _ai_report:
+                result["research_summary"] = _ai_report
+        except Exception:
+            pass
+        return result
+
+    @app.get("/ticker/{ticker}/dilution")
+    def ticker_dilution_detail(ticker: str):
+        """Full dilution tracker data for a ticker."""
+        profile = enrichment.get_ticker_profile(ticker)
+        company = db.parquet.get_company_by_ticker(ticker)
+        filings = db.parquet.get_filings_by_ticker(ticker)
+
+        if not filings:
+            try:
+                from pipeline import ScanPipeline
+                result = ScanPipeline().scan_ticker(ticker, run_rag=False)
+                if result and result.filings_processed > 0:
+                    filings = result.filings
+                    profile = result.profile
+            except Exception as exc:
+                logger.warning("Auto-scan falló para dilution de %s: %s", ticker, exc)
+
+        from dilution_tracker import DilutionTrackerService
+        tracker = DilutionTrackerService()
+        data = tracker.get_dilution_data(
+            ticker=ticker,
+            company=company,
+            filings=filings,
+            price=profile.price,
+        )
+        # Merge profile data
+        data.price = profile.price
+        data.market_cap = profile.market_cap
+        data.country = profile.country
+        data.sector = profile.sector
+        data.exchange = profile.exchange
+        return data.model_dump()
 
     @app.get("/ticker/{ticker}/news")
     def ticker_news(ticker: str, limit: int = 30):

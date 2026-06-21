@@ -209,3 +209,142 @@ class SECFilingMeta(BaseModel):
     description: Optional[str] = None
     url: HttpUrl
     ai_summary: Optional[str] = None
+
+
+# ─── Dilution Tracker Models ────────────────────────────────────────────────
+
+class CashPosition(BaseModel):
+    cash_estimated: Optional[float] = None
+    quarterly_burn: Optional[float] = None
+    months_of_cash: Optional[float] = None
+    going_concern: bool = False
+    cash_balance_filing_date: Optional[str] = None
+    source: Optional[str] = None
+
+
+class PendingOffering(BaseModel):
+    type: str = ""  # Best Efforts, Firm Commitment, etc.
+    shares: Optional[float] = None
+    price: Optional[float] = None
+    warrants: Optional[float] = None
+    date: Optional[str] = None
+    filing_type: Optional[str] = None  # S-1, 424B, etc.
+    filing_url: Optional[str] = None
+
+
+class ShelfRegistration(BaseModel):
+    active: bool = False
+    raisable_total: Optional[float] = None
+    total_offering: Optional[float] = None
+    amt_sold_last_12m: Optional[float] = None
+    float_shares: Optional[float] = None
+    sixty_day_high_price: Optional[float] = None
+    price_to_exceed_baby_shelf: Optional[float] = None
+    float_value: Optional[float] = None
+    expiration: Optional[str] = None
+    over_baby_shelf: bool = False
+
+
+class ATMProgram(BaseModel):
+    name: str = ""
+    remaining: Optional[float] = None
+    total_amt: Optional[float] = None
+    bank: Optional[str] = None
+    date: Optional[str] = None
+
+
+class WarrantIssue(BaseModel):
+    issue_label: str = ""
+    remaining: Optional[float] = None
+    exercise_price: Optional[float] = None
+    owners: list[str] = []
+    protection: Optional[str] = None  # "Full Ratchet", "Customary Anti-Dilution", "N/A"
+
+
+class ConvertibleIssue(BaseModel):
+    issue_label: str = ""
+    total: Optional[float] = None
+    remaining: Optional[float] = None
+    conversion_price: Optional[float] = None
+    protection: Optional[str] = None
+    owner: Optional[str] = None
+
+
+class EquityLine(BaseModel):
+    total_amt: Optional[float] = None
+    shares: Optional[float] = None
+    atm_remaining: Optional[float] = None
+    pricing_mechanism: Optional[str] = None
+    date: Optional[str] = None
+    max_daily_shares: Optional[str] = None
+    max_daily_amount: Optional[str] = None
+
+
+class CompletedOffering(BaseModel):
+    date: Optional[str] = None
+    type: str = ""
+    amount: Optional[float] = None
+    shares: Optional[float] = None
+    price: Optional[float] = None
+    warrants: Optional[float] = None
+    bank: Optional[str] = None
+    detail: Optional[str] = None
+
+
+class LockUpAgreement(BaseModel):
+    description: str = ""
+    duration_days: Optional[int] = None
+    date_filed: Optional[str] = None
+    filing_type: Optional[str] = None
+
+
+class NasdaqComplianceItem(BaseModel):
+    date: Optional[str] = None
+    rule: Optional[str] = None
+    exchange: Optional[str] = None
+    status: str = ""  # RESOLVED, NOTICE, PENDING
+    details: Optional[str] = None
+
+
+class ReverseSplit(BaseModel):
+    date: Optional[str] = None
+    ratio: Optional[str] = None
+
+
+class DilutionTrackerData(BaseModel):
+    ticker: str
+    company_name: Optional[str] = None
+    price: Optional[float] = None
+    market_cap: Optional[float] = None
+    country: Optional[str] = None
+    sector: Optional[str] = None
+    exchange: Optional[str] = None
+
+    cash_position: Optional[CashPosition] = None
+    pending_offering: Optional[PendingOffering] = None
+    shelf: Optional[ShelfRegistration] = None
+    atms: list[ATMProgram] = []
+    warrants: list[WarrantIssue] = []
+    convertibles: list[ConvertibleIssue] = []
+    equity_lines: list[EquityLine] = []
+    completed_offerings: list[CompletedOffering] = []
+    lock_up_agreements: list[LockUpAgreement] = []
+    nasdaq_compliance: list[NasdaqComplianceItem] = []
+    reverse_splits: list[ReverseSplit] = []
+
+    estimated_dilution_pct: Optional[float] = None
+    risk_level: str = "MEDIUM"
+
+    pending_events: list["PendingDilutionEvent"] = []
+
+
+class PendingDilutionEvent(BaseModel):
+    """A dilution source that is still active/pending (not closed)."""
+    type: str = ""  # shelf, atm, warrant, convertible, s1_offering
+    label: str = ""
+    detail: Optional[str] = None
+    max_dilution_shares: Optional[float] = None
+    max_dilution_usd: Optional[float] = None
+    urgency: str = "MEDIUM"  # HIGH: active, MEDIUM: pending, LOW: far out
+    trigger_condition: Optional[str] = None  # what would trigger dilution
+    date: Optional[str] = None

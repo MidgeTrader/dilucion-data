@@ -1,40 +1,36 @@
-# Python
-__pycache__/
-*.py[cod]
-*.egg-info/
-.venv/
-venv/
-env/
-*.egg
-
-# Environment
-.env
-.env.local
-.env.*.local
-
-# Data & cache
-data/
-*.parquet
-*.sqlite
-chroma/
-
-# Node
-node_modules/
-.next/
-out/
-*.log
-npm-debug.log*
-
-# IDE
-.idea/
-.vscode/
-*.swp
-.DS_Store
 
 # Build
-dist/
-build/
-*.tsbuildinfo
-
+# Data & cache
+# Environment
+# IDE
+# Node
+# Python
 # Streamlit
+*.egg
+*.egg-info/
+*.log
+*.parquet
+*.py[cod]
+*.sqlite
+*.swp
+*.tsbuildinfo
+.DS_Store
+.env
+.env.*.local
+.env.local
+.idea/
+.next/
 .streamlit/
+.venv/
+.vscode/
+__pycache__/
+backend/.env
+build/
+chroma/
+data/
+dist/
+env/
+node_modules/
+npm-debug.log*
+out/
+venv/

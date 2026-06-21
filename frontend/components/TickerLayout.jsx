@@ -1,15 +1,10 @@
 import Head from 'next/head';
 import TopNav from './TopNav';
 import TickerSidebar from './TickerSidebar';
-import FloatingAskButton from './FloatingAskButton';
-import RagChatModal from './RagChatModal';
-import { DEMO_MODE } from '../lib/mockData';
 import useTickerData from '../lib/useTickerData';
-import { useState } from 'react';
 
 export default function TickerLayout({ activeNav, title, children }) {
   const { tickerUpper, data, loading, error, profile } = useTickerData();
-  const [chatOpen, setChatOpen] = useState(false);
 
   const pageTitle = title
     ? `${title} — ${tickerUpper || 'Ticker'}`
@@ -21,19 +16,10 @@ export default function TickerLayout({ activeNav, title, children }) {
         <title>{pageTitle}</title>
       </Head>
 
-      {DEMO_MODE && (
-        <div className="bg-accent-yellow/10 border-b border-accent-yellow/20 px-4 py-1.5 text-center text-xs text-accent-yellow">
-          Modo demo — inspirado en{' '}
-          <a href="https://app.askedgar.io/ticker/SPHL" target="_blank" rel="noopener noreferrer" className="underline hover:text-white">
-            AskEdgar
-          </a>
-        </div>
-      )}
-
       <div className="flex flex-col h-screen overflow-hidden">
         <TopNav />
 
-        <div className="flex flex-1 min-h-0">
+      <div className="flex flex-1 min-h-0">
           <TickerSidebar profile={profile} activeNav={activeNav} ticker={tickerUpper} />
 
           <main className="flex-1 overflow-y-auto bg-surface p-4">
@@ -59,14 +45,6 @@ export default function TickerLayout({ activeNav, title, children }) {
           </main>
         </div>
       </div>
-
-      <FloatingAskButton ticker={tickerUpper} onClick={() => setChatOpen(true)} />
-      <RagChatModal
-        ticker={tickerUpper}
-        isOpen={chatOpen}
-        onClose={() => setChatOpen(false)}
-        filingUrl={data?.filings?.[0]?.source_url}
-      />
     </>
   );
 }

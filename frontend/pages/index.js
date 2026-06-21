@@ -1,10 +1,9 @@
 import { useState, useEffect } from 'react';
 import Head from 'next/head';
-import Link from 'next/link';
 import TopNav from '../components/TopNav';
 import DilutionHeatmap from '../components/DilutionHeatmap';
 import DilutionAlertsFeed from '../components/DilutionAlertsFeed';
-import { fetchTopDilution, fetchAlertsFeed, DEMO_MODE } from '../lib/mockData';
+import { fetchTopDilution, fetchAlertsFeed } from '../lib/mockData';
 
 export default function Home() {
   const [topDilution, setTopDilution] = useState([]);
@@ -24,17 +23,6 @@ export default function Home() {
       <Head>
         <title>SEC Dilution Tracker + RAG</title>
       </Head>
-
-      {DEMO_MODE && (
-        <div className="bg-accent-teal/10 border-b border-accent-teal/30 px-4 py-2 text-center text-sm text-accent-teal">
-          Dashboard AskEdgar →{' '}
-          <Link href="/ticker/SPHL" className="underline font-semibold hover:text-white">
-            Abrir SPHL
-          </Link>
-          {' '}(sidebar + chart + KPIs + risk panel)
-        </div>
-      )}
-
       <div className="flex flex-col min-h-screen">
         <TopNav />
         <main className="flex-1 p-6 space-y-6 max-w-6xl mx-auto w-full">

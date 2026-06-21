@@ -131,9 +131,24 @@ export default function TickerOverviewView({ data, loading, tickerUpper }) {
           <h3 className="text-sm font-semibold text-white">Research Report</h3>
           <button type="button" className="text-xs text-gray-500 hover:text-white">Customize research</button>
         </div>
-        <p className="text-sm text-gray-300 leading-relaxed">
-          {data?.research_summary || 'AI-generated dilution research will appear here after scanning SEC filings and running RAG analysis.'}
-        </p>
+        <div className="text-sm text-gray-300 leading-relaxed space-y-3">
+          {data?.research_summary
+            ? data.research_summary.split(/\n(?=\*\*)/).map((section, i) => {
+                const headerMatch = section.match(/^\*\*(.+?)\*\*/);
+                if (headerMatch) {
+                  const header = headerMatch[1];
+                  const body = section.replace(/^\*\*.+?\*\*/, '').trim();
+                  return (
+                    <div key={i}>
+                      <h4 className="text-sm font-semibold text-accent-teal mb-1">{header}</h4>
+                      <p className="text-sm text-gray-300">{body}</p>
+                    </div>
+                  );
+                }
+                return <p key={i} className="text-sm text-gray-300">{section.trim()}</p>;
+              })
+            : 'AI-generated dilution research will appear here after scanning SEC filings and running RAG analysis.'}
+        </div>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
