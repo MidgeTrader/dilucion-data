@@ -21,7 +21,7 @@ export default function Home() {
   return (
     <>
       <Head>
-        <title>SEC Dilution Tracker + RAG</title>
+        <title>Dilucion Data</title>
       </Head>
       <div className="flex flex-col min-h-screen">
         <TopNav />

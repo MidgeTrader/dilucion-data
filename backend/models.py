@@ -1,4 +1,4 @@
-"""Pydantic data models — unified Dilution Tracker + AskEdgar."""
+"""Pydantic data models — Dilucion Data - Dilution Tracker."""
 
 from __future__ import annotations
 

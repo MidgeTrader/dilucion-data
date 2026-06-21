@@ -1,6 +1,6 @@
 import { useState, useMemo } from 'react';
 
-// ── AskEdgar-style filing groups ──
+// ── Dilucion Data filing groups ──
 
 const GROUPS = [
   { key: 'Financials',    forms: ['10-K', '10-Q', '10-K/A', '10-Q/A', '20-F', '20-F/A', '40-F'] },

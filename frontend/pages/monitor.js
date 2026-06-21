@@ -19,7 +19,7 @@ export default function MonitorPage() {
 
   return (
     <Layout activeNav="monitor">
-      <Head><title>Monitor — SEC Dilution Tracker</title></Head>
+      <Head><title>Monitor — Dilucion Data</title></Head>
       <header className="border-b border-surface-border px-6 py-4">
         <div className="max-w-md"><SearchBar /></div>
       </header>

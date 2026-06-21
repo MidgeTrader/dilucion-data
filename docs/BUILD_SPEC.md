@@ -1,6 +1,6 @@
 # BUILD THIS: COMPLETE SEC DILUTION DETECTION + RAG ANALYSIS SYSTEM (Python + Next.js)
 
-> Full master spec — Dilution Tracker + AskEdgar RAG + Telegram Private Mode
+> Full master spec — Dilution Tracker + Dilucion Data + Telegram Private Mode
 
 See user message for complete PART 1-6 + file list (43 files).
 Telegram sections 7A-7F appended below.

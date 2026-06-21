@@ -1,4 +1,4 @@
-const KEY = 'askedgar:lastTicker';
+const KEY = 'dd:lastTicker';
 const DEFAULT = 'SPHL';
 
 export function getLastTicker() {

@@ -105,7 +105,7 @@ export default function TickerOverviewView({ data, loading, tickerUpper }) {
           </span>
         )}
       </div>
-      {/* Fila 1: gráfico 2/3 + Company/About 1/3 (misma rejilla 3 cols que AskEdgar) */}
+      {/* Fila 1: gráfico 2/3 + Company/About 1/3 (Dilucion Data layout) */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-3">
         <div className="lg:col-span-2 min-w-0 flex">
           <div className="flex-1">

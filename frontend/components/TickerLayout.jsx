@@ -8,7 +8,7 @@ export default function TickerLayout({ activeNav, title, children }) {
 
   const pageTitle = title
     ? `${title} — ${tickerUpper || 'Ticker'}`
-    : `${tickerUpper || 'Ticker'} — SEC Dilution Tracker`;
+    : `${tickerUpper || 'Ticker'} — Dilucion Data`;
 
   return (
     <>

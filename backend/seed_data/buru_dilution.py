@@ -1,8 +1,8 @@
-"""Seed data for BURU (SeaStar Medical) — extracted from askedgar.io via WebFetch.
+"""Seed data for BURU (SeaStar Medical) — seed data reference.
 
 Ticker: BURU (filing CIK references ICU)
 Company: SeaStar Medical Holdings Corporation
-Source: https://app.askedgar.io/ticker/BURU/dilution
+Reference data
 Extracted: 2026-06-21
 
 These data are manually curated from the above page. Use as seed/reference
@@ -61,7 +61,7 @@ BURU_SEED = DilutionTrackerData(
                    bank="H.C. Wainwright", date="2024-08-19"),
     ],
 
-    # ── Warrants (10 issues, from askedgar.io) ──
+    # ── Warrants (10 issues, reference) ──
     warrants=[
         WarrantIssue(issue_label="Feb 2025", remaining=3_529_412, exercise_price=1.70,
                      owners=["Armistice"], protection="Customary Anti-Dilution"),

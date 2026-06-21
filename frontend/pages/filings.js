@@ -19,7 +19,7 @@ export default function FilingsPage() {
 
   return (
     <Layout activeNav="filings">
-      <Head><title>Filings — SEC Dilution Tracker</title></Head>
+      <Head><title>Filings — Dilucion Data</title></Head>
       <header className="border-b border-surface-border px-6 py-4 flex items-center gap-4">
         <div className="flex-1 max-w-md"><SearchBar /></div>
         <span className="text-sm text-gray-500">{filings.length} filings tracked</span>

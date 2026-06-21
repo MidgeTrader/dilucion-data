@@ -1,4 +1,4 @@
-/** Full Dilution Tracker — inspired by askedgar.io /ticker/X/dilution */
+/** Full Dilution Tracker — Dilucion Data - Dilution Tracker */
 import { useState, useEffect } from 'react';
 import { fetchDilutionTracker } from '../../lib/mockData';
 

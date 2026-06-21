@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""SEC Dilution Tracker + AskEdgar RAG — unified CLI and API server."""
+"""Dilucion Data — unified CLI and API server."""
 
 from __future__ import annotations
 
@@ -265,7 +265,7 @@ def cmd_serve(args: argparse.Namespace) -> int:
             except Exception as exc:
                 logger.warning("Auto-scan fallo para %s: %s", ticker, exc)
 
-        # Si faltan filings, traerlos de SEC directo (como askedgar.io)
+        # Si faltan filings, traerlos de SEC directo (desde SEC)
         from models import FilingDilution
         from datetime import datetime as _dt
         if len(filings) < 30 and profile.cik:
@@ -738,7 +738,7 @@ def cmd_mode(_: argparse.Namespace) -> int:
 
 
 def build_parser() -> argparse.ArgumentParser:
-    p = argparse.ArgumentParser(description="SEC Dilution Tracker + AskEdgar RAG")
+    p = argparse.ArgumentParser(description="Dilucion Data")
     sub = p.add_subparsers(dest="command")
 
     s = sub.add_parser("scan", help="Scan ticker or URL")
