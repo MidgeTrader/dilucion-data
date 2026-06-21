@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import re
 
 import requests
 import yfinance as yf
@@ -82,41 +83,57 @@ class GapScreener:
         results.sort(key=lambda x: x["change_pct"], reverse=(sort_type != "losers"))
         return results
 
+    @staticmethod
+    def _fmt_reason(raw: str) -> str:
+        """Split concatenated halt reasons: H10T1T12 -> H10-T1-T12."""
+        if not raw:
+            return ""
+        parts = re.findall(r'[A-Za-z]+\d*', raw)
+        return "-".join(parts) if parts else raw
+
     def halts(self) -> list[dict]:
-        """Fetch current trading halts from Nasdaq Trader."""
-        halts = []
+        """Fetch real trading halts via Playwright (intercepts RPCHandler.axd)."""
+        import time
+        from bs4 import BeautifulSoup as BS
         try:
-            resp = self.session.get(
-                "https://www.nasdaqtrader.com/trader.aspx?id=tradehalts",
-                timeout=15,
-            )
-            soup = BeautifulSoup(resp.text, "lxml")
-            table = soup.find("table", {"id": "haltsGrid"})
-            if table:
-                for tr in table.find_all("tr")[1:]:
+            from playwright.sync_api import sync_playwright
+            with sync_playwright() as p:
+                browser = p.chromium.launch(headless=True)
+                page = browser.new_page()
+                html_data = None
+
+                def _capture(response):
+                    nonlocal html_data
+                    if "RPCHandler.axd" in response.url:
+                        try:
+                            j = response.json()
+                            if isinstance(j, dict) and "result" in j and "<table" in str(j["result"]):
+                                html_data = j["result"]
+                        except: pass
+
+                page.on("response", _capture)
+                page.goto("https://www.nasdaqtrader.com/trader.aspx?id=tradehalts", wait_until="networkidle")
+                time.sleep(2)
+                browser.close()
+
+            if html_data:
+                soup = BS(html_data, "lxml")
+                halts = []
+                for tr in soup.find_all("tr")[1:]:
                     cells = [td.get_text(strip=True) for td in tr.find_all("td")]
-                    if len(cells) >= 4:
+                    if len(cells) >= 5:
                         halts.append({
-                            "symbol": cells[0],
-                            "status": cells[1] if len(cells) > 1 else "",
-                            "reason": cells[2] if len(cells) > 2 else "",
-                            "date": cells[3] if len(cells) > 3 else "",
-                            "halt_time": cells[4] if len(cells) > 4 else "",
-                            "resume_time": cells[5] if len(cells) > 5 else "",
-                            "duration": "",
-                            "market": cells[7] if len(cells) > 7 else "",
+                            "symbol": cells[2] if len(cells) > 2 else "",
+                            "status": "Active",
+                            "reason": self._fmt_reason(cells[5]) if len(cells) > 5 else "",
+                            "date": cells[0] if len(cells) > 0 else "",
+                            "halt_time": cells[1].replace(".000", "") if len(cells) > 1 else "",
+                            "resume_time": cells[6] if len(cells) > 6 else "",
+                            "duration": cells[6] if len(cells) > 6 else "",
+                            "market": cells[4] if len(cells) > 4 else "",
                         })
-                return halts
-            logger.info("Nasdaq halts table not found (JS rendered), using fallback data")
+                if halts:
+                    return halts
         except Exception as exc:
-            logger.warning("Halts fetch failed: %s", exc)
-        # Fallback con datos realistas de Nasdaq (API requiere JS)
-        import datetime
-        today = datetime.date.today().isoformat()
-        halts_fallback = [
-            {"symbol": "POM",  "status": "Active", "reason": "T1", "date": "2026-06-18", "halt_time": "19:50:00", "resume_time": "", "duration": "", "market": "NASDAQ"},
-            {"symbol": "ORIS", "status": "Active", "reason": "T1", "date": "2026-06-18", "halt_time": "19:50:00", "resume_time": "", "duration": "", "market": "NASDAQ"},
-            {"symbol": "WLDS", "status": "Active", "reason": "T1", "date": "2026-06-18", "halt_time": "19:50:00", "resume_time": "", "duration": "", "market": "NASDAQ"},
-            {"symbol": "BOXL", "status": "Active", "reason": "T1", "date": "2026-06-18", "halt_time": "19:50:00", "resume_time": "", "duration": "", "market": "NASDAQ"},
-        ]
-        return halts_fallback
+            logger.warning("Playwright halts failed: %s", exc)
+        return []

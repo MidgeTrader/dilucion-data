@@ -21,26 +21,30 @@ function Clock() {
   return <span>{time}</span>;
 }
 
-const TABS = ['gainers', 'losers', 'premarket', 'aftermarket'];
+const TABS = ['gainers', 'losers', 'premarket', 'aftermarket', 'halts'];
 
 export default function ScreenerPage() {
   const [data, setData] = useState([]);
+  const [halts, setHalts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [sortType, setSortType] = useState('gainers');
   const [minGap, setMinGap] = useState(25);
 
   const fetchData = (type, gap) => {
     setLoading(true);
-    const url = `${BACKEND}/screener/gap?sort_type=${type}&min_gap=${gap}&min_price=0.30&limit=30`;
-    fetch(url).then(r => r.ok ? r.json() : []).then(setData).catch(() => setData([])).finally(() => setLoading(false));
+    if (type === 'halts') {
+      fetch(`${BACKEND}/screener/halts`).then(r => r.ok ? r.json() : []).then(setHalts).catch(() => setHalts([])).finally(() => setLoading(false));
+    } else {
+      fetch(`${BACKEND}/screener/gap?sort_type=${type}&min_gap=${gap}&min_price=0.30&limit=30`)
+        .then(r => r.ok ? r.json() : []).then(setData).catch(() => setData([])).finally(() => setLoading(false));
+    }
   };
 
   useEffect(() => { fetchData(sortType, minGap); }, []);
 
   const switchTab = (tab) => {
     setSortType(tab);
-    const gap = tab === 'losers' ? 10 : tab === 'premarket' || tab === 'aftermarket' ? 0 : minGap;
-    setMinGap(tab === 'premarket' || tab === 'aftermarket' ? 0 : minGap);
+    const gap = tab === 'losers' ? 10 : tab === 'premarket' || tab === 'aftermarket' ? 0 : tab === 'halts' ? 0 : minGap;
     fetchData(tab, gap);
   };
 
@@ -60,7 +64,7 @@ export default function ScreenerPage() {
             {TABS.map(tab => (
               <button key={tab} onClick={() => switchTab(tab)}
                 className={`text-xs px-3 py-1.5 rounded-md border transition-colors ${sortType === tab ? 'bg-accent-teal text-black font-semibold border-accent-teal' : 'border-surface-border text-gray-400 hover:text-white hover:border-gray-600'}`}>
-                {tab === 'gainers' ? 'Top gainers' : tab === 'losers' ? 'Top losers' : tab === 'premarket' ? 'Premarket' : 'Aftermarket'}
+                {tab === 'gainers' ? 'Top gainers' : tab === 'losers' ? 'Top losers' : tab === 'premarket' ? 'Premarket' : tab === 'aftermarket' ? 'Aftermarket' : 'Halts'}
               </button>
             ))}
           </div>
@@ -69,7 +73,7 @@ export default function ScreenerPage() {
             <button onClick={() => fetchData(sortType, minGap)} className="text-xs px-3 py-1.5 rounded-md bg-accent-teal text-black font-semibold hover:bg-accent-teal/80">↻ Refresh</button>
           </div>
         </div>
-        {sortType !== 'premarket' && sortType !== 'aftermarket' && (
+        {sortType !== 'premarket' && sortType !== 'aftermarket' && sortType !== 'halts' && (
           <div className="flex items-center gap-2">
             <span className="text-xs text-gray-500">{sortType === 'losers' ? 'Max loss:' : 'Gap:'}</span>
             {[10, 25, 50, 100].map(g => (
@@ -83,6 +87,31 @@ export default function ScreenerPage() {
 
         {loading ? (
           <div className="space-y-1 animate-pulse">{[1,2,3,4,5].map(i => <div key={i} className="h-8 bg-surface-hover rounded" />)}</div>
+        ) : sortType === 'halts' ? (
+          <div className="overflow-x-auto">
+            <table className="w-full text-xs whitespace-nowrap">
+              <thead><tr className="text-gray-500 border-b border-surface-border">
+                <th className="text-left px-3 py-2.5 font-medium">Ticker</th><th className="text-left px-3 py-2.5 font-medium">Status</th><th className="text-left px-3 py-2.5 font-medium">Reason</th>
+                <th className="text-left px-3 py-2.5 font-medium">Date</th><th className="text-left px-3 py-2.5 font-medium">Halt</th><th className="text-left px-3 py-2.5 font-medium">Resume</th>
+                <th className="text-left px-3 py-2.5 font-medium">Duration</th><th className="text-left px-3 py-2.5 font-medium">Market</th>
+              </tr></thead>
+              <tbody>
+                {halts.length === 0 ? <tr><td colSpan={8} className="text-center py-8 text-gray-600">No active halts</td></tr>
+                : halts.map(h => (
+                  <tr key={h.symbol} className="border-b border-surface-border/20 hover:bg-surface-hover/50">
+                    <td className="px-3 py-2.5 text-accent-yellow font-mono font-semibold">{h.symbol}</td>
+                    <td className="px-3 py-2.5"><span className="text-[10px] px-2 py-0.5 rounded bg-accent-red/20 text-accent-red font-semibold">{h.status}</span></td>
+                    <td className="px-3 py-2.5 font-mono text-gray-300">{h.reason}</td>
+                    <td className="px-3 py-2.5 text-gray-400">{h.date}</td>
+                    <td className="px-3 py-2.5 font-mono text-gray-300">{h.halt_time}</td>
+                    <td className="px-3 py-2.5 text-gray-500">{h.resume_time || '—'}</td>
+                    <td className="px-3 py-2.5 text-gray-500">{h.duration || '—'}</td>
+                    <td className="px-3 py-2.5 text-gray-400">{h.market}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-xs whitespace-nowrap">
