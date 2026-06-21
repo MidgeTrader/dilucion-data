@@ -1,7 +1,5 @@
 import { useState, useEffect } from 'react';
 import Head from 'next/head';
-import Layout from '../components/Layout';
-
 const BACKEND = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8000';
 
 function fmtNum(n) {
@@ -47,7 +45,7 @@ export default function ScreenerPage() {
   };
 
   return (
-    <Layout activeNav="screener">
+    <>
       <Head><title>Screener — Dilucion Data</title></Head>
       <div className="flex items-center justify-between px-6 py-3 border-b border-surface-border bg-surface">
         <div className="flex items-center gap-4">
@@ -104,7 +102,9 @@ export default function ScreenerPage() {
               </tr></thead>
               <tbody>
                 {data.length === 0 ? (
-                  <tr><td colSpan={10} className="text-center py-8 text-gray-600 text-sm">Sin datos</td></tr>
+                  <tr><td colSpan={10} className="text-center py-8 text-gray-600 text-sm">
+                    {sortType === 'losers' ? 'Sin perdedores con esa pérdida mínima' : sortType === 'premarket' || sortType === 'aftermarket' ? 'Sin datos - mercado cerrado' : 'Sin gaps con esos filtros'}
+                  </td></tr>
                 ) : data.map((row, i) => (
                   <tr key={row.symbol} className={`border-b border-surface-border/20 hover:bg-surface-hover/50 ${i % 2 === 0 ? 'bg-surface-muted/20' : ''}`}>
                     <td className="px-2 py-2.5">
@@ -134,6 +134,6 @@ export default function ScreenerPage() {
           </div>
         )}
       </main>
-    </Layout>
+    </>
   );
 }
