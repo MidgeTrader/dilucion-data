@@ -108,6 +108,24 @@ El frontend apunta al backend vía `NEXT_PUBLIC_BACKEND_URL` (por defecto `http:
 ./start.command        # lanza backend + frontend, health check, y detiene al cerrar
 ```
 
+### CLI del backend
+
+`main.py` expone subcomandos además de `serve`:
+
+```sh
+.venv/bin/python main.py db init                    # inicializa la base de datos
+.venv/bin/python main.py scan AAPL                  # pipeline completo (filings → dilución)
+.venv/bin/python main.py scan SPHL --ask "warrant details?"  # con pregunta RAG propia
+.venv/bin/python main.py rag AAPL --prompt warrants # consulta RAG por ticker
+.venv/bin/python main.py rag <url_filing> --question "..."  # RAG sobre un filing concreto
+.venv/bin/python main.py search -q "Full Ratchet"   # búsqueda full-text en SEC EDGAR
+.venv/bin/python main.py report                     # reporte de riesgo de dilución
+.venv/bin/python main.py monitor                    # monitor RSS/diario de la SEC
+.venv/bin/python main.py telegram                   # lanza el bot de alertas
+```
+
+Lista completa de subcomandos: `.venv/bin/python main.py --help`.
+
 ## API (resumen)
 
 | Endpoint | Descripción |
@@ -131,6 +149,21 @@ El frontend apunta al backend vía `NEXT_PUBLIC_BACKEND_URL` (por defecto `http:
 - `backend/.env.example` es la plantilla pública con placeholders.
 - El historial de git no contiene secrets.
 - Los datos locales (`data/`) están gitignored.
+
+## Cómo se calcula la dilución
+
+```
+S_new = monto_ofrecido / precio_actual
+Dilution % = S_new / (acciones_en_circulación + S_new) × 100
+```
+
+Niveles de riesgo:
+
+| Dilución | Nivel |
+|---|---|
+| ≥ 20% | 🔴 Alto |
+| 10 – 20% | 🟡 Medio |
+| < 10% | 🟢 Bajo |
 
 ## Notas
 
