@@ -32,7 +32,12 @@ KNOWN_INVESTORS = ["Armistice", "3i", "LP", "Sabby", "Intracoastal", "Alto", "Ma
 
 
 class DilutionTrackerService:
-    """Build a comprehensive DilutionTrackerData from SEC filings."""
+    """Build a comprehensive DilutionTrackerData from SEC filings.
+
+    Combines manual seed data, RAG extraction (LLM), and regex fallback
+    to analyze a company's dilution profile including shelf registrations,
+    ATM programs, warrants, convertibles, equity lines, and cash position.
+    """
 
     _SEED_REGISTRY: dict[str, DilutionTrackerData] = {}
 
@@ -45,7 +50,13 @@ class DilutionTrackerService:
             cls._SEED_REGISTRY[BURU_SEED.ticker] = BURU_SEED
             logger.info("Loaded seed: %s", BURU_SEED.ticker)
         except Exception as exc:
-            logger.warning("Seeds unavailable: %s", exc)
+            logger.warning("BURU seed unavailable: %s", exc)
+        try:
+            from seed_data.slnd_dilution import SLND_SEED
+            cls._SEED_REGISTRY[SLND_SEED.ticker] = SLND_SEED
+            logger.info("Loaded seed: %s", SLND_SEED.ticker)
+        except Exception as exc:
+            logger.warning("SLND seed unavailable: %s", exc)
         return cls._SEED_REGISTRY
 
     def __init__(self) -> None:
@@ -87,7 +98,18 @@ class DilutionTrackerService:
         return "\n\n".join(texts)
 
     def _get_filing_urls(self, cik: str, form_filter: list[str], limit: int = 10) -> list:
-        """Query SEC submissions API directly with high iteration limit to find older filings."""
+        """Query SEC submissions API for filings matching specific form types.
+
+        Iterates up to 800 entries to find older filings beyond the default limit.
+
+        Args:
+            cik: SEC CIK number.
+            form_filter: List of form types to match (e.g. ["S-3", "S-3/A"]).
+            limit: Max results to return.
+
+        Returns:
+            List of SECFilingMeta matching the filter.
+        """
         data = self.facts.get_submissions(cik)
         if not data:
             return []
@@ -112,7 +134,19 @@ class DilutionTrackerService:
         return results
 
     def _rag_batch(self, method: str, meta_list: list, model_class) -> list:
-        """Run RAG extraction on filings. Checks SQLite cache BEFORE downloading."""
+        """Run RAG extraction on a batch of SEC filings.
+
+        Checks SQLite extraction_cache before downloading to avoid re-processing
+        already analyzed filings.
+
+        Args:
+            method: Name of the RAG extraction method (e.g. "extract_warrants").
+            meta_list: List of SECFilingMeta to process.
+            model_class: Pydantic model class for the result type.
+
+        Returns:
+            List of extracted model instances (may be empty).
+        """
         rag = self._rag_extractor
         if not rag or not meta_list:
             return []
@@ -124,13 +158,13 @@ class DilutionTrackerService:
             key = hashlib.sha256(f"{url_str}:{method_name}".encode()).hexdigest()[:32]
             cached = None
             try:
-                row = sqlite3.connect(cache_path).execute(
-                    "SELECT result_json FROM extraction_cache WHERE url_hash=? AND extraction_type=?",
-                    (key, method_name)
-                ).fetchone()
-                if row:
-                    cached = json.loads(row[0])
-                sqlite3.connect(cache_path).close()
+                with sqlite3.connect(cache_path, timeout=5) as conn:
+                    row = conn.execute(
+                        "SELECT result_json FROM extraction_cache WHERE url_hash=? AND extraction_type=?",
+                        (key, method_name)
+                    ).fetchone()
+                    if row:
+                        cached = json.loads(row[0])
             except Exception:
                 pass
             if cached is not None:
@@ -150,8 +184,16 @@ class DilutionTrackerService:
         return [model_class(**r) for r in results] if results else []
 
     def _check_cache_freshness(self, cik: str, ticker: str) -> None:
-        """Track last-checked timestamp. If new filings exist since last check,
-        new URLs won't be in cache -> auto-processed on next request. Old cache stays valid."""
+        """Check if new SEC filings exist since the last extraction cache check.
+
+        Compares the latest filing date from the SEC submissions API against
+        the stored last-checked timestamp. If new filings arrived, downstream
+        RAG extraction will process them (cache miss on new URLs).
+
+        Args:
+            cik: SEC CIK number.
+            ticker: Ticker symbol for logging/cache keys.
+        """
         try:
             data = self.facts.get_submissions(cik)
             if not data:
@@ -177,6 +219,22 @@ class DilutionTrackerService:
             logger.debug("Cache check: %s", exc)
 
     def get_dilution_data(self, ticker: str, company: Optional[Company] = None, filings: Optional[list] = None, price: Optional[float] = None) -> DilutionTrackerData:
+        """Build a complete dilution profile for a ticker.
+
+        Combines SEC filings, RAG extraction, seed data, and regex fallbacks
+        to produce a comprehensive DilutionTrackerData with cash position,
+        shelf registrations, ATMs, warrants, convertibles, equity lines,
+        completed offerings, compliance status, and pending events.
+
+        Args:
+            ticker: Ticker symbol to analyze.
+            company: Optional Company record for cached data.
+            filings: Optional list of FilingDilution for offering history.
+            price: Current stock price for dilution calculations.
+
+        Returns:
+            Fully populated DilutionTrackerData (seed data takes priority).
+        """
         tu = ticker.upper()
         if tu in self._seeds:
             return self._seeds[tu]
@@ -230,8 +288,9 @@ class DilutionTrackerService:
         for sf in shelf_filings:
             try:
                 shelf_ck = hashlib.sha256(f"{sf.url}:shelf".encode()).hexdigest()[:32]
-                shelf_row = sqlite3.connect(str(self.settings.data_dir / "extraction_cache.sqlite")).execute(
-                    "SELECT result_json FROM extraction_cache WHERE url_hash=? AND extraction_type=?", (shelf_ck, 'shelf')).fetchone()
+                with sqlite3.connect(str(self.settings.data_dir / "extraction_cache.sqlite"), timeout=5) as conn:
+                    shelf_row = conn.execute(
+                        "SELECT result_json FROM extraction_cache WHERE url_hash=? AND extraction_type=?", (shelf_ck, 'shelf')).fetchone()
                 if shelf_row:
                     sj = json.loads(shelf_row[0])
                     if isinstance(sj, dict) and sj.get("active"):
@@ -240,7 +299,8 @@ class DilutionTrackerService:
                         tracker.shelf.raisable_total = sj.get("raisable_total") or sj.get("total_offering")
                         tracker.shelf.amt_sold_last_12m = sj.get("amt_sold_last_12m")
                         tracker.shelf.expiration = sj.get("expiration")
-            except: pass
+            except Exception as exc:
+                logger.debug("Shelf cache read failed: %s", exc)
         if tracker.shelf and tracker.shelf.active:
             flt = company.float_shares if company else None
             if flt:
@@ -282,10 +342,11 @@ class DilutionTrackerService:
                 seen.add(k)
                 s = f.summary or ""
                 # Check if 8-K contains offering language
-                has_offering = bool(re.search(r'warrant|offering|atm|purchase\s+agreement|priced|equity\s+line', s, re.I))
-                if f.form_type == "8-K" and has_offering:
-                    otype = "REGISTERED OFFERING"
-                    # Try to extract amount from summary text if not in structured field
+                _is_merger = bool(re.search(r'merger\s+agreement|plan\s+of\s+merger|business\s+combination', s, re.I))
+                has_offering = bool(re.search(r'offering|atm|purchase\s+agreement|priced|equity\s+line', s, re.I)) and not _is_merger
+                has_warrant_keyword = bool(re.search(r'\bwarrant', s, re.I)) and not _is_merger
+                if f.form_type == "8-K" and (has_offering or has_warrant_keyword):
+                    # Try to extract amount from summary text first
                     if f.shelf_amount_usd is None:
                         am = re.search(r'\$(\d[\d,]+(?:\.\d+)?)\s*(?:million|M)?', s, re.I)
                         if am:
@@ -293,13 +354,50 @@ class DilutionTrackerService:
                             if 'million' in s.lower() or 'm' in s.lower().split('$')[-1][:20]:
                                 val *= 1_000_000
                             f.shelf_amount_usd = val
+                    # Try to download filing text for 8-Ks with warrants but no amount
+                    if f.shelf_amount_usd is None and has_warrant_keyword and f.source_url:
+                        try:
+                            _content = self._fetch_filing_text(f.source_url)
+                            if _content:
+                                # Check if actually a merger before marking as offering
+                                if re.search(r'merger\s+agreement|plan\s+of\s+merger', _content, re.I):
+                                    _is_merger = True
+                                if not _is_merger:
+                                    _m = re.search(r'(?:gross\s+proceeds|offering\s+(?:amount|size|value)|purchase\s+(?:price|amount)|aggregate\s+(?:gross\s+)?proceeds).{0,200}?\$?(\d[\d,]+(?:\.\d+)?)\s*(million|M|billion|B)?', _content, re.I)
+                                    if _m:
+                                        _val = float(_m.group(1).replace(',', ''))
+                                        _unit = _m.group(2)
+                                        if _unit and 'b' in _unit.lower():
+                                            _val *= 1_000_000_000
+                                        elif _unit and 'm' in _unit.lower():
+                                            _val *= 1_000_000
+                                        f.shelf_amount_usd = _val
+                        except Exception as _exc:
+                            logger.debug("8-K text fetch failed for %s: %s", f.accession_number, _exc)
+                    # Classify as offering only if we found an amount, otherwise MATERIAL AGREEMENT
+                    otype = "REGISTERED OFFERING" if f.shelf_amount_usd else "MATERIAL AGREEMENT"
                 else:
                     otype = "REGISTERED OFFERING" if f.form_type and f.form_type.startswith("424B") else \
                             "REGISTERED OFFERING" if f.form_type == "S-1" else \
                             "SHELF" if f.form_type and f.form_type.startswith("S-3") else \
                             "MATERIAL AGREEMENT" if f.form_type == "8-K" else "OTHER"
-                bank = "Maxim Group" if "Maxim" in s else "H.C. Wainwright" if "Wainwright" in s else "Armistice" if "Armistice" in s else None
-                offs.append(CompletedOffering(date=ds, type=otype, amount=f.shelf_amount_usd, shares=getattr(f,'shares_new',None), price=getattr(f,'current_price',None), bank=bank, detail=f.summary or f.form_type))
+                bank = "Maxim Group" if "Maxim" in s else "H.C. Wainwright" if "Wainwright" in s else "Armistice" if "Armistice" in s else \
+                        "Ladenburg" if "Ladenburg" in s else "Roth" if "Roth" in s else "Aegis" if "Aegis" in s else \
+                        "ThinkEquity" if "ThinkEquity" in s else None
+                # Populate warrants count if available (no shares estimation —
+                # using today's price to estimate shares for past dates is misleading)
+                _warrants_count: Optional[float] = None
+                if f.warrants_found:
+                    if f.warrants_detail:
+                        _warrants_count = float(len(f.warrants_detail))
+                    else:
+                        _warrants_count = 1.0  # flag: warrants present but count unknown
+                offs.append(CompletedOffering(
+                    date=ds, type=otype, amount=f.shelf_amount_usd,
+                    shares=None, price=None,
+                    warrants=_warrants_count, bank=bank,
+                    detail=f.summary or f.form_type,
+                ))
             tracker.completed_offerings = offs
 
         # Add offering filings (424B, S-1, S-3) - last 12 months for full history
@@ -311,7 +409,8 @@ class DilutionTrackerService:
             try:
                 fd = dt_date.fromisoformat(f.filed_date) if isinstance(f.filed_date, str) else f.filed_date
                 if fd < year_ago: continue
-            except: pass
+            except Exception as exc:
+                logger.debug("Date parse failed for offering filing: %s", exc)
             key = f"{f.filed_date}_{f.form_type}"
             if key in seen_keys: continue
             seen_keys.add(key)
@@ -319,12 +418,14 @@ class DilutionTrackerService:
             amount = None
             try:
                 ck = hashlib.sha256(f"{f.url}:shelf".encode()).hexdigest()[:32]
-                row = sqlite3.connect(str(self.settings.data_dir / "extraction_cache.sqlite")).execute(
-                    "SELECT result_json FROM extraction_cache WHERE url_hash=? AND extraction_type=?", (ck, 'shelf')).fetchone()
+                with sqlite3.connect(str(self.settings.data_dir / "extraction_cache.sqlite"), timeout=5) as conn:
+                    row = conn.execute(
+                        "SELECT result_json FROM extraction_cache WHERE url_hash=? AND extraction_type=?", (ck, 'shelf')).fetchone()
                 if row:
                     sj = json.loads(row[0])
                     amount = sj.get("total_offering") if isinstance(sj, dict) else None
-            except: pass
+            except Exception as exc:
+                logger.debug("Shelf cache read failed: %s", exc)
             tracker.completed_offerings.append(CompletedOffering(date=f.filed_date, type=otype, amount=amount, detail=f.form_type))
 
         # Add/upgrade from equity_line RAG data (replace generic MATERIAL AGREEMENT)
@@ -403,6 +504,31 @@ class DilutionTrackerService:
                     detail=f"${c.total/1e6:.1f}M issued, ${c.remaining/1e3:.0f}K remaining",
                 ))
         return tracker
+
+    def _fetch_filing_text(self, url: str, max_bytes: int = 20480) -> Optional[str]:
+        """Download SEC filing text for lightweight regex extraction.
+
+        Args:
+            url: SEC filing URL (HTML or HTM).
+            max_bytes: Max bytes to download (default 20KB).
+
+        Returns:
+            Filing text as string, or None on failure.
+        """
+        from apis.connection_pool import get_client
+        from config import get_settings
+        _settings = get_settings()
+        try:
+            _client = get_client(timeout=8.0)
+            _resp = _client.get(url, headers={"User-Agent": _settings.sec_user_agent})
+            _resp.raise_for_status()
+            _text = _resp.text[:max_bytes]
+            # Strip HTML tags for regex matching
+            _clean = re.sub(r'<[^>]+>', ' ', _text)
+            return _clean
+        except Exception as exc:
+            logger.debug("Failed to fetch %s: %s", url, exc)
+            return None
 
     def _guess_exchange(self, cik: str) -> Optional[str]:
         info = self.facts.get_company_info(cik)

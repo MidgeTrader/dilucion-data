@@ -4,12 +4,22 @@ from __future__ import annotations
 
 import logging
 import re
+import threading
+import time
+from concurrent.futures import ThreadPoolExecutor
 
 import requests
 import yfinance as yf
 from bs4 import BeautifulSoup
 
 logger = logging.getLogger(__name__)
+
+# Caché de resultados del scan (20s). El frontend en dev (StrictMode) llama
+# 2 veces seguidas y el auto-refresh es cada 30s: con 20s de TTL colapsamos
+# la doble llamada sin cambiar la frescura de los datos.
+_SCAN_CACHE_TTL = 20.0
+_SCAN_CACHE: dict[tuple, tuple[float, list[dict]]] = {}
+_SCAN_CACHE_LOCK = threading.Lock()
 
 
 class GapScreener:
@@ -20,6 +30,14 @@ class GapScreener:
         self.session.headers.update({"User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36"})
 
     def _get_yf_data(self, ticker: str) -> dict:
+        """Fetch price and volume data from Yahoo Finance for a ticker.
+
+        Args:
+            ticker: Ticker symbol.
+
+        Returns:
+            Dict with symbol, name, price, change, gap, volume, or empty dict on failure.
+        """
         try:
             t = yf.Ticker(ticker)
             info = t.info or {}
@@ -48,6 +66,25 @@ class GapScreener:
             return {}
 
     def scan(self, sort_type: str = "gainers", min_gap: float = 25.0, min_price: float = 0.30, max_results: int = 30) -> list[dict]:
+        """Scan Yahoo Finance most active penny stocks for gap movers.
+
+        Scrapes the Yahoo screener page, then fetches individual ticker
+        data via yfinance. Filters by gap percentage and price threshold.
+
+        Args:
+            sort_type: "gainers", "losers", "premarket", or "aftermarket".
+            min_gap: Minimum gap percentage to include.
+            min_price: Minimum stock price filter.
+            max_results: Maximum results to return.
+
+        Returns:
+            List of dicts with ticker data sorted by change_pct.
+        """
+        cache_key = (sort_type, round(float(min_gap), 4), round(float(min_price), 4), max_results)
+        with _SCAN_CACHE_LOCK:
+            hit = _SCAN_CACHE.get(cache_key)
+            if hit and time.monotonic() - hit[0] < _SCAN_CACHE_TTL:
+                return [dict(r) for r in hit[1]]
         try:
             resp = self.session.get(self.YAHOO_URL, timeout=30)
             soup = BeautifulSoup(resp.text, "lxml")
@@ -63,13 +100,32 @@ class GapScreener:
                 if len(raw) > 3 and raw[0] == raw[1]:
                     raw = raw[1:]
                 symbols.append(raw)
+            # Dedup preservando orden — Yahoo a veces repite símbolos y eso
+            # generaba filas duplicadas en el frontend.
+            symbols = list(dict.fromkeys(symbols))
         except Exception as exc:
             logger.warning("Yahoo fail: %s", exc)
             return []
 
+        # Fetch por ticker en paralelo (6 workers) — mismos datos, mucho más
+        # rápido que el bucle secuencial (~1s por ticker antes).
+        targets = symbols[:max_results * 2]
+        fetched: dict[str, dict] = {}
+        with ThreadPoolExecutor(max_workers=6) as pool:
+            future_map = {pool.submit(self._get_yf_data, t): t for t in targets}
+            for future, t in future_map.items():
+                try:
+                    d = future.result()
+                except Exception as exc:
+                    logger.debug("yfinance future fail %s: %s", t, exc)
+                    d = {}
+                if d:
+                    fetched[t] = d
+
+        # Mismo filtrado y orden que antes: se recorren en orden de símbolo.
         results = []
-        for t in symbols[:max_results * 2]:
-            d = self._get_yf_data(t)
+        for t in targets:
+            d = fetched.get(t)
             if not d or d["price"] < min_price:
                 continue
             if sort_type == "losers" and d["change_pct"] > -min_gap:
@@ -81,6 +137,8 @@ class GapScreener:
                 break
 
         results.sort(key=lambda x: x["change_pct"], reverse=(sort_type != "losers"))
+        with _SCAN_CACHE_LOCK:
+            _SCAN_CACHE[cache_key] = (time.monotonic(), [dict(r) for r in results])
         return results
 
     @staticmethod
@@ -92,7 +150,15 @@ class GapScreener:
         return "-".join(parts) if parts else raw
 
     def halts(self) -> list[dict]:
-        """Fetch real trading halts via Playwright (intercepts RPCHandler.axd)."""
+        """Fetch real-time Nasdaq trading halts via Playwright.
+
+        Intercepts RPCHandler.axd response from nasdaqtrader.com to extract
+        halt data without parsing the full page.
+
+        Returns:
+            List of halt dicts with symbol, status, reason, date, time.
+            Falls back to empty list on any failure.
+        """
         import time
         from bs4 import BeautifulSoup as BS
         try:
@@ -109,7 +175,8 @@ class GapScreener:
                             j = response.json()
                             if isinstance(j, dict) and "result" in j and "<table" in str(j["result"]):
                                 html_data = j["result"]
-                        except: pass
+                        except Exception:
+                            logger.debug("Halt response JSON parse failed")
 
                 page.on("response", _capture)
                 page.goto("https://www.nasdaqtrader.com/trader.aspx?id=tradehalts", wait_until="networkidle")

@@ -22,7 +22,7 @@ class Company(BaseModel):
     float_shares: Optional[float] = None
     shares_outstanding: Optional[float] = None
     sector: Optional[str] = None
-    country: Optional[str] = "US"
+    country: Optional[str] = None
     market_cap: Optional[float] = None
 
 

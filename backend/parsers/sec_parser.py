@@ -155,7 +155,10 @@ class SECParser:
 
     def __init__(self) -> None:
         self.settings = get_settings()
-        self.rate_limiter = RateLimiter(self.settings.sec_rate_limit_per_sec)
+        # period=1.0: el setting es por SEGUNDO (SEC permite 10 req/s).
+        # Sin esto, RateLimiter usaba period=60s → 10 req/min y cada
+        # batch de >10 descargas se congelaba ~50-60s.
+        self.rate_limiter = RateLimiter(self.settings.sec_rate_limit_per_sec, period=1.0)
         self.session = requests.Session()
         self.session.headers.update(
             {

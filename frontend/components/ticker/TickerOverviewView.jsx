@@ -77,7 +77,7 @@ export default function TickerOverviewView({ data, loading, tickerUpper }) {
     setScanning(true);
     setScanMsg(null);
     try {
-      const backend = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8001';
+      const backend = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8000';
       const r = await fetch(`${backend}/scan/${tickerUpper}`, { method: 'POST' });
       if (!r.ok) throw new Error(await r.text());
       setScanMsg({ type: 'success', text: '✅ Scan completado. Recarga la página para ver los datos.' });

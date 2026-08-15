@@ -1,11 +1,19 @@
-"""Parquet data lake — companies + dilution filings."""
+"""Parquet data lake — companies + dilution filings.
+
+NOTE: DataFrames are cached in memory with a 10-second TTL so that reading
+a parquet file does NOT open a new file descriptor on every HTTP request.
+Without this cache, concurrent frontend requests quickly exhaust the macOS
+file-descriptor limit (``OSError: [Errno 24] Too many open files``), which
+then cascades to the SQLite cache and every other file-backed operation.
+"""
 
 from __future__ import annotations
 
 import json
 import logging
+import time
 from datetime import date, datetime, timezone
-from typing import List, Optional
+from typing import List, Optional, Tuple
 
 import pandas as pd
 
@@ -32,12 +40,22 @@ FILINGS_COLUMNS = [
 
 
 class ParquetDB:
-    """CRUD over local Parquet files with dedup by accession_number."""
+    """CRUD over local Parquet files with dedup by accession_number.
+
+    Caches DataFrames in memory for 10 seconds to avoid opening the same
+    parquet file on every HTTP request (preventing fd exhaustion).
+    """
+
+    _COMPANIES_CACHE_TTL = 10.0   # seconds
+    _FILINGS_CACHE_TTL = 10.0
 
     def __init__(self) -> None:
         self.settings = get_settings()
         self.companies_path = self.settings.companies_parquet
         self.filings_path = self.settings.filings_parquet
+        # In-memory DataFrame cache: (df, timestamp)
+        self._companies_cache: Optional[Tuple[pd.DataFrame, float]] = None
+        self._filings_cache: Optional[Tuple[pd.DataFrame, float]] = None
 
     def inicializar(self) -> None:
         self.settings.data_dir.mkdir(parents=True, exist_ok=True)
@@ -55,16 +73,38 @@ class ParquetDB:
         self.inicializar()
 
     def _read_companies(self) -> pd.DataFrame:
+        """Return companies DataFrame (cached in memory for 10s)."""
+        now = time.monotonic()
+        if self._companies_cache is not None:
+            df, ts = self._companies_cache
+            if now - ts < self._COMPANIES_CACHE_TTL:
+                return df.copy()
         if not self.companies_path.exists():
             self.inicializar()
-        return pd.read_parquet(self.companies_path)
+        df = pd.read_parquet(self.companies_path)
+        self._companies_cache = (df, now)
+        return df.copy()
 
     def _read_filings(self) -> pd.DataFrame:
+        """Return filings DataFrame (cached in memory for 10s)."""
+        now = time.monotonic()
+        if self._filings_cache is not None:
+            df, ts = self._filings_cache
+            if now - ts < self._FILINGS_CACHE_TTL:
+                return df.copy()
         if not self.filings_path.exists():
             self.inicializar()
-        return pd.read_parquet(self.filings_path)
+        df = pd.read_parquet(self.filings_path)
+        self._filings_cache = (df, now)
+        return df.copy()
+
+    def _invalidate_cache(self) -> None:
+        """Invalidate both caches so next read re-loads from disk."""
+        self._companies_cache = None
+        self._filings_cache = None
 
     def upsert_company(self, company: Company) -> None:
+        self._invalidate_cache()
         df = self._read_companies()
         record = company.model_dump()
         record["updated_at"] = datetime.now(timezone.utc).isoformat()
@@ -77,8 +117,10 @@ class ParquetDB:
             df = pd.concat([df, pd.DataFrame([record])], ignore_index=True)
         df.drop_duplicates(subset=["cik"], keep="last", inplace=True)
         df.to_parquet(self.companies_path, compression="snappy", index=False)
+        self._invalidate_cache()
 
     def upsert_filing(self, filing: FilingDilution) -> None:
+        self._invalidate_cache()
         df = self._read_filings()
         record = filing.model_dump()
         record["filed_date"] = pd.Timestamp(filing.filed_date)
@@ -96,6 +138,7 @@ class ParquetDB:
             df = pd.concat([df, pd.DataFrame([record])], ignore_index=True)
         df.drop_duplicates(subset=["accession_number"], keep="last", inplace=True)
         df.to_parquet(self.filings_path, compression="snappy", index=False)
+        self._invalidate_cache()
 
     def registrar_alerta(
         self,
@@ -172,7 +215,9 @@ class ParquetDB:
             return []
         df = df.copy()
         df["dilution_percentage"] = pd.to_numeric(df["dilution_percentage"], errors="coerce")
+        # Un ticker por fila — el filing con mayor dilución de cada uno
         df = df.sort_values("dilution_percentage", ascending=False, na_position="last")
+        df = df.drop_duplicates(subset=["ticker"], keep="first")
         return [self._row_to_filing(row) for _, row in df.head(limit).iterrows()]
 
     def query_by_ticker(self, ticker: str) -> List[FilingDilution]:
@@ -207,7 +252,7 @@ class ParquetDB:
             float_shares=float(row["float_shares"]) if pd.notna(row.get("float_shares")) else None,
             shares_outstanding=float(row["shares_outstanding"]) if pd.notna(row.get("shares_outstanding")) else None,
             sector=row.get("sector") if pd.notna(row.get("sector")) else None,
-            country=row.get("country") if pd.notna(row.get("country")) else "US",
+            country=row.get("country") if pd.notna(row.get("country")) else None,
             market_cap=float(row["market_cap"]) if pd.notna(row.get("market_cap")) else None,
         )
 

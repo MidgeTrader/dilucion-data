@@ -8,10 +8,10 @@ from __future__ import annotations
 import logging
 from datetime import date, timedelta
 
-import httpx
 from tenacity import retry, stop_after_attempt, wait_exponential
 
 from apis._rate_limit import RateLimiter
+from apis.connection_pool import get_client
 from cache import TTLCache
 from config import get_settings
 from models import NewsArticle
@@ -47,10 +47,10 @@ class EodhdClient:
         p["api_token"] = self.api_key
         p.setdefault("fmt", "json")
         try:
-            with httpx.Client(timeout=25) as client:
-                resp = client.get(f"{self.BASE}/{path.lstrip('/')}", params=p)
-                resp.raise_for_status()
-                return resp.json()
+            client = get_client(timeout=25)
+            resp = client.get(f"{self.BASE}/{path.lstrip('/')}", params=p)
+            resp.raise_for_status()
+            return resp.json()
         except Exception as exc:
             logger.error("EODHD %s error: %s", path, exc)
             return None

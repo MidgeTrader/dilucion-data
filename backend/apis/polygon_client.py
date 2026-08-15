@@ -6,10 +6,10 @@ import logging
 from datetime import datetime, timezone, timedelta
 from typing import Any, Dict, List, Optional
 
-import httpx
 from tenacity import retry, stop_after_attempt, wait_exponential
 
 from apis._rate_limit import RateLimiter
+from apis.connection_pool import get_client
 from cache import TTLCache
 from config import get_settings
 from models import CandlePoint, NewsArticle
@@ -61,10 +61,10 @@ class PolygonClient:
         last_exc: Exception | None = None
         for base in self.BASE_URLS:
             try:
-                with httpx.Client(timeout=30) as client:
-                    resp = client.get(f"{base}{path}", params=params)
-                    resp.raise_for_status()
-                    return resp.json()
+                client = get_client()  # default: connect=5s, read=15s
+                resp = client.get(f"{base}{path}", params=params)
+                resp.raise_for_status()
+                return resp.json()
             except Exception as exc:
                 last_exc = exc
                 logger.debug("Massive request failed on %s: %s", base, exc)

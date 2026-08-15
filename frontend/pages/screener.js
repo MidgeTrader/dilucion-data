@@ -1,7 +1,9 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import Head from 'next/head';
 import TopNav from '../components/TopNav';
 const BACKEND = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8000';
+
+const AUTO_REFRESH_MS = 30000;
 
 function fmtNum(n) {
   if (n == null) return '—';
@@ -30,18 +32,61 @@ export default function ScreenerPage() {
   const [loading, setLoading] = useState(true);
   const [sortType, setSortType] = useState('gainers');
   const [minGap, setMinGap] = useState(25);
+  const [nextRefreshIn, setNextRefreshIn] = useState(AUTO_REFRESH_MS / 1000);
+  const refreshRef = useRef(null);
 
-  const fetchData = (type, gap) => {
-    setLoading(true);
+  // Acumula: actualiza precios de existentes, añade nuevos debajo
+  const mergeData = (current, incoming) => {
+    const incomingMap = new Map(incoming.map(r => [r.symbol, r]));
+    const updated = current.map(row => incomingMap.has(row.symbol) ? { ...row, ...incomingMap.get(row.symbol) } : row);
+    const seen = new Set(current.map(r => r.symbol));
+    const fresh = incoming.filter(r => !seen.has(r.symbol));
+    return fresh.length ? [...updated, ...fresh] : updated;
+  };
+
+  const mergeHalts = (current, incoming) => {
+    const incomingMap = new Map(incoming.map(h => [h.symbol, h]));
+    const updated = current.map(row => incomingMap.has(row.symbol) ? { ...row, ...incomingMap.get(row.symbol) } : row);
+    const seen = new Set(current.map(h => h.symbol));
+    const fresh = incoming.filter(h => !seen.has(h.symbol));
+    return fresh.length ? [...updated, ...fresh] : updated;
+  };
+
+  const fetchData = (type, gap, silent = false) => {
+    if (!silent) { setLoading(true); setData([]); setHalts([]); }
     if (type === 'halts') {
-      fetch(`${BACKEND}/screener/halts`).then(r => r.ok ? r.json() : []).then(setHalts).catch(() => setHalts([])).finally(() => setLoading(false));
+      fetch(`${BACKEND}/screener/halts`).then(r => r.ok ? r.json() : []).then(incoming => {
+        if (silent) setHalts(prev => mergeHalts(prev, incoming));
+        else setHalts(incoming);
+      }).catch(() => {}).finally(() => { if (!silent) setLoading(false); });
     } else {
       fetch(`${BACKEND}/screener/gap?sort_type=${type}&min_gap=${gap}&min_price=0.30&limit=30`)
-        .then(r => r.ok ? r.json() : []).then(setData).catch(() => setData([])).finally(() => setLoading(false));
+        .then(r => r.ok ? r.json() : []).then(incoming => {
+          if (silent) setData(prev => mergeData(prev, incoming));
+          else setData(incoming);
+        }).catch(() => {}).finally(() => { if (!silent) setLoading(false); });
     }
   };
 
+  // Initial fetch
   useEffect(() => { fetchData(sortType, minGap); }, []);
+
+  // Auto-refresh every 30s
+  useEffect(() => {
+    const tick = () => {
+      fetchData(sortType, minGap, true);
+      setNextRefreshIn(AUTO_REFRESH_MS / 1000);
+    };
+    const countdown = setInterval(() => {
+      setNextRefreshIn(prev => Math.max(0, prev - 1));
+    }, 1000);
+    const interval = setInterval(tick, AUTO_REFRESH_MS);
+    refreshRef.current = interval;
+    return () => {
+      clearInterval(interval);
+      clearInterval(countdown);
+    };
+  }, [sortType, minGap]);
 
   const switchTab = (tab) => {
     setSortType(tab);
@@ -72,7 +117,8 @@ export default function ScreenerPage() {
           </div>
           <div className="flex items-center gap-2">
             <span className="text-xs text-gray-600">Watchlist</span>
-            <button onClick={() => fetchData(sortType, minGap)} className="text-xs px-3 py-1.5 rounded-md bg-accent-teal text-black font-semibold hover:bg-accent-teal/80">↻ Refresh</button>
+            <span className="text-[10px] text-gray-600 tabular-nums">↻ {nextRefreshIn}s</span>
+            <button onClick={() => { fetchData(sortType, minGap, true); setNextRefreshIn(AUTO_REFRESH_MS / 1000); }} className="text-xs px-3 py-1.5 rounded-md bg-accent-teal text-black font-semibold hover:bg-accent-teal/80">↻ Refresh</button>
           </div>
         </div>
         {sortType !== 'premarket' && sortType !== 'aftermarket' && sortType !== 'halts' && (
@@ -137,7 +183,7 @@ export default function ScreenerPage() {
                 ) : data.map((row, i) => (
                   <tr key={row.symbol} className={`border-b border-surface-border/20 hover:bg-surface-hover/50 ${i % 2 === 0 ? 'bg-surface-muted/20' : ''}`}>
                     <td className="px-2 py-2.5">
-                      <a href={`/ticker/${row.symbol}/dilution`} className="font-mono text-sm font-semibold text-accent-teal hover:text-white">
+                      <a href={`/ticker/${row.symbol}`} className="font-mono text-sm font-semibold text-accent-teal hover:text-white">
                         {row.symbol} <span className="text-[10px] text-accent-green">▴</span>
                       </a>
                     </td>

@@ -23,7 +23,7 @@ export default function Home() {
       <Head>
         <title>Dilucion Data</title>
       </Head>
-      <div className="flex flex-col min-h-screen">
+      <div className="flex flex-col min-h-dvh">
         <TopNav />
         <main className="flex-1 p-6 space-y-6 max-w-6xl mx-auto w-full">
           <div>

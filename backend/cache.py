@@ -1,14 +1,19 @@
-"""SQLite-backed TTL cache for external API responses."""
+"""SQLite-backed TTL cache for external API responses.
+
+Uses a thread-local persistent SQLite connection so that uvicorn's thread
+pool doesn't trip the "SQLite objects created in a thread can only be used
+in that same thread" error.  WAL journal mode enables safe concurrent reads.
+"""
 
 from __future__ import annotations
 
 import json
 import logging
 import sqlite3
+import threading
 import time
-from contextlib import contextmanager
 from pathlib import Path
-from typing import Any, Generator, Optional
+from typing import Any, Optional
 
 logger = logging.getLogger(__name__)
 
@@ -19,10 +24,17 @@ class TTLCache:
     def __init__(self, db_path: Path) -> None:
         self.db_path = db_path
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
+        # Thread-local storage: one connection per thread per instance
+        self._local = threading.local()
         self._init_db()
 
-    def _init_db(self) -> None:
-        with self._connect() as conn:
+    def _get_conn(self) -> sqlite3.Connection:
+        """Return the thread's persistent connection, creating it lazily."""
+        conn: Optional[sqlite3.Connection] = getattr(self._local, "conn", None)
+        if conn is None:
+            conn = sqlite3.connect(self.db_path, timeout=10)
+            conn.execute("PRAGMA journal_mode=WAL")
+            conn.execute("PRAGMA busy_timeout=5000")
             conn.execute(
                 """
                 CREATE TABLE IF NOT EXISTS cache (
@@ -32,20 +44,18 @@ class TTLCache:
                 )
                 """
             )
-            conn.commit()
+            self._local.conn = conn
+        return conn
 
-    @contextmanager
-    def _connect(self) -> Generator[sqlite3.Connection, None, None]:
-        conn = sqlite3.connect(self.db_path)
-        try:
-            yield conn
-        finally:
-            conn.close()
+    def _init_db(self) -> None:
+        """Ensure schema exists in the calling thread."""
+        self._get_conn()
 
     def get(self, key: str) -> Optional[Any]:
         """Return cached value if not expired."""
         now = time.time()
-        with self._connect() as conn:
+        try:
+            conn = self._get_conn()
             row = conn.execute(
                 "SELECT value, expires_at FROM cache WHERE cache_key = ?",
                 (key,),
@@ -62,12 +72,16 @@ class TTLCache:
             except json.JSONDecodeError:
                 logger.warning("Invalid JSON in cache for key=%s", key)
                 return None
+        except sqlite3.OperationalError as exc:
+            logger.warning("Cache get failed for key=%s: %s", key, exc)
+            return None
 
     def set(self, key: str, value: Any, ttl_seconds: int) -> None:
         """Store value with TTL."""
         expires_at = time.time() + ttl_seconds
         payload = json.dumps(value, default=str)
-        with self._connect() as conn:
+        try:
+            conn = self._get_conn()
             conn.execute(
                 """
                 INSERT INTO cache (cache_key, value, expires_at)
@@ -79,19 +93,28 @@ class TTLCache:
                 (key, payload, expires_at),
             )
             conn.commit()
+        except sqlite3.OperationalError as exc:
+            logger.warning("Cache set failed for key=%s: %s", key, exc)
 
     def delete(self, key: str) -> None:
-        with self._connect() as conn:
+        try:
+            conn = self._get_conn()
             conn.execute("DELETE FROM cache WHERE cache_key = ?", (key,))
             conn.commit()
+        except sqlite3.OperationalError as exc:
+            logger.warning("Cache delete failed for key=%s: %s", key, exc)
 
     def purge_expired(self) -> int:
         """Remove expired entries and return count deleted."""
         now = time.time()
-        with self._connect() as conn:
+        try:
+            conn = self._get_conn()
             cursor = conn.execute(
                 "DELETE FROM cache WHERE expires_at < ?",
                 (now,),
             )
             conn.commit()
             return cursor.rowcount
+        except sqlite3.OperationalError as exc:
+            logger.warning("Cache purge failed: %s", exc)
+            return 0

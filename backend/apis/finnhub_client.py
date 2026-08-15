@@ -6,10 +6,10 @@ import logging
 from datetime import datetime, timezone
 from typing import Optional
 
-import httpx
 from tenacity import retry, stop_after_attempt, wait_exponential
 
 from apis._rate_limit import RateLimiter
+from apis.connection_pool import get_client
 from cache import TTLCache
 from config import get_settings
 from models import NewsArticle, QuoteData
@@ -36,18 +36,18 @@ class FinnhubClient:
             return None
         self.limiter.wait()
         try:
-            with httpx.Client(timeout=20) as client:
-                resp = client.get(f"{self.BASE}/quote", params={"symbol": ticker.upper(), "token": self.api_key})
-                resp.raise_for_status()
-                data = resp.json()
-                quote = QuoteData(
-                    ticker=ticker.upper(),
-                    price=float(data["c"]) if data.get("c") else None,
-                    change_percent=float(data["dp"]) if data.get("dp") else None,
-                    timestamp=datetime.now(timezone.utc),
-                )
-                self.cache.set(cache_key, quote.model_dump(), self.settings.finnhub_cache_ttl_minutes * 60)
-                return quote
+            client = get_client(timeout=20)
+            resp = client.get(f"{self.BASE}/quote", params={"symbol": ticker.upper(), "token": self.api_key})
+            resp.raise_for_status()
+            data = resp.json()
+            quote = QuoteData(
+                ticker=ticker.upper(),
+                price=float(data["c"]) if data.get("c") else None,
+                change_percent=float(data["dp"]) if data.get("dp") else None,
+                timestamp=datetime.now(timezone.utc),
+            )
+            self.cache.set(cache_key, quote.model_dump(), self.settings.finnhub_cache_ttl_minutes * 60)
+            return quote
         except Exception as exc:
             logger.error("Finnhub quote error: %s", exc)
             return None
@@ -61,13 +61,13 @@ class FinnhubClient:
             return None
         self.limiter.wait()
         try:
-            with httpx.Client(timeout=20) as client:
-                resp = client.get(f"{self.BASE}/stock/profile2", params={"symbol": ticker.upper(), "token": self.api_key})
-                resp.raise_for_status()
-                data = resp.json()
-                if data:
-                    self.cache.set(cache_key, data, 86400)
-                return data
+            client = get_client(timeout=20)
+            resp = client.get(f"{self.BASE}/stock/profile2", params={"symbol": ticker.upper(), "token": self.api_key})
+            resp.raise_for_status()
+            data = resp.json()
+            if data:
+                self.cache.set(cache_key, data, 86400)
+            return data
         except Exception as exc:
             logger.error("Finnhub profile error: %s", exc)
             return None
@@ -91,48 +91,48 @@ class FinnhubClient:
 
         self.limiter.wait()
         try:
-            with httpx.Client(timeout=20) as client:
-                resp = client.get(
-                    f"{self.BASE}/company-news",
-                    params={
-                        "symbol": symbol,
-                        "from": start.isoformat(),
-                        "to": end.isoformat(),
-                        "token": self.api_key,
-                    },
-                )
-                resp.raise_for_status()
-                raw = resp.json()
-                if not isinstance(raw, list):
-                    return []
+            client = get_client(timeout=20)
+            resp = client.get(
+                f"{self.BASE}/company-news",
+                params={
+                    "symbol": symbol,
+                    "from": start.isoformat(),
+                    "to": end.isoformat(),
+                    "token": self.api_key,
+                },
+            )
+            resp.raise_for_status()
+            raw = resp.json()
+            if not isinstance(raw, list):
+                return []
 
-                articles: list[NewsArticle] = []
-                for item in raw[:limit]:
-                    headline = item.get("headline") or item.get("title")
-                    if not headline:
-                        continue
-                    ts = item.get("datetime")
-                    if ts:
-                        pub_date = datetime.fromtimestamp(int(ts), tz=timezone.utc).strftime("%Y-%m-%d")
-                    else:
-                        pub_date = end.isoformat()
-                    articles.append(
-                        NewsArticle(
-                            title=headline,
-                            source=item.get("source") or "Finnhub",
-                            date=pub_date,
-                            url=item.get("url") or "",
-                            summary=(item.get("summary") or "")[:500] or None,
-                            source_type="finnhub",
-                        )
+            articles: list[NewsArticle] = []
+            for item in raw[:limit]:
+                headline = item.get("headline") or item.get("title")
+                if not headline:
+                    continue
+                ts = item.get("datetime")
+                if ts:
+                    pub_date = datetime.fromtimestamp(int(ts), tz=timezone.utc).strftime("%Y-%m-%d")
+                else:
+                    pub_date = end.isoformat()
+                articles.append(
+                    NewsArticle(
+                        title=headline,
+                        source=item.get("source") or "Finnhub",
+                        date=pub_date,
+                        url=item.get("url") or "",
+                        summary=(item.get("summary") or "")[:500] or None,
+                        source_type="finnhub",
                     )
-
-                self.cache.set(
-                    cache_key,
-                    [a.model_dump() for a in articles],
-                    self.settings.finnhub_cache_ttl_minutes * 60,
                 )
-                return articles
+
+            self.cache.set(
+                cache_key,
+                [a.model_dump() for a in articles],
+                self.settings.finnhub_cache_ttl_minutes * 60,
+            )
+            return articles
         except Exception as exc:
             logger.error("Finnhub news error for %s: %s", symbol, exc)
             return []

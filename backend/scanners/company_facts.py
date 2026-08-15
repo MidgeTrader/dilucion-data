@@ -6,9 +6,9 @@ import logging
 import time
 from typing import Any, Dict, List, Optional
 
-import httpx
 from tenacity import retry, stop_after_attempt, wait_exponential
 
+from apis.connection_pool import get_client
 from cache import TTLCache
 from config import get_settings
 from models import SECFilingMeta
@@ -37,14 +37,14 @@ class CompanyFactsClient:
             return cached
         time.sleep(0.1)
         try:
-            with httpx.Client(timeout=30) as client:
-                resp = client.get(f"{base}{path}", headers=self.headers)
-                if resp.status_code == 404:
-                    return None
-                resp.raise_for_status()
-                data = resp.json()
-                self.cache.set(cache_key, data, ttl)
-                return data
+            client = get_client()  # default: connect=5s, read=15s
+            resp = client.get(f"{base}{path}", headers=self.headers)
+            if resp.status_code == 404:
+                return None
+            resp.raise_for_status()
+            data = resp.json()
+            self.cache.set(cache_key, data, ttl)
+            return data
         except Exception as exc:
             logger.error("SEC API error %s: %s", path, exc)
             return None

@@ -176,7 +176,7 @@ def cmd_serve(args: argparse.Namespace) -> int:
     from apis.data_enrichment import DataEnrichment
     from config import get_settings
     from db.database import Database
-    from models import RAGResponse, RiskAssessment, RiskLevel
+    from models import RAGResponse, RiskAssessment, RiskLevel, TickerProfile
     from rag.prompts import get_prompt
     from rag.rag_engine import RAGEngine
 
@@ -189,6 +189,55 @@ def cmd_serve(args: argparse.Namespace) -> int:
         allow_methods=["*"],
         allow_headers=["*"],
     )
+
+    # Shared service instances — persist across requests, no re-download
+    from dilution_tracker import DilutionTrackerService
+    from pipeline import ScanPipeline
+    from cache import TTLCache
+    _shared_pipeline = ScanPipeline()
+    _shared_tracker = DilutionTrackerService()
+    _ticker_cache = TTLCache(settings.cache_db_path)
+
+    # --- Single-flight: colapsa requests concurrentes idénticos ---
+    # El frontend (React StrictMode en dev, doble click, dos pestañas) puede
+    # disparar el mismo endpoint 2 veces a la vez. Sin este guard, ambas
+    # ejecuciones corren el pipeline completo (SEC + LLM) en paralelo.
+    import functools
+    import threading
+    _inflight_lock = threading.Lock()
+    _inflight: dict[str, threading.Event] = {}
+
+    def _single_flight(key_fn):
+        """Decorador: una sola ejecución concurrente por clave.
+
+        El primer request computa; los concurrentes esperan a que termine y
+        re-ejecutan el handler, que servirá desde la caché ya rellena.
+        Si el primero falla sin cachear, el que esperaba computa él mismo.
+        """
+        def deco(fn):
+            @functools.wraps(fn)
+            def wrapper(*args, **kwargs):
+                key = key_fn(*args, **kwargs)
+                with _inflight_lock:
+                    ev = _inflight.get(key)
+                    if ev is None:
+                        ev = threading.Event()
+                        _inflight[key] = ev
+                        owner = True
+                    else:
+                        owner = False
+                if not owner:
+                    ev.wait(timeout=300)
+                try:
+                    return fn(*args, **kwargs)
+                finally:
+                    if owner:
+                        with _inflight_lock:
+                            _inflight.pop(key, None)
+                        ev.set()
+            return wrapper
+        return deco
+
     # --- IP-based rate limiter for /rag endpoint ---
     import time as _time
     from collections import defaultdict
@@ -244,8 +293,24 @@ def cmd_serve(args: argparse.Namespace) -> int:
             raise HTTPException(500, str(e)) from e
 
     @app.get("/ticker/{ticker}")
+    @_single_flight(lambda ticker: f"full:{ticker.upper()}")
     def ticker_profile(ticker: str):
-        profile = enrichment.get_ticker_profile(ticker)
+        ticker = ticker.upper()
+        # Cache FULL response 15min — así cambiar de pestaña no refetch,
+        # y una API lenta solo afecta al primer request, no a los siguientes.
+        _full_key = f"full:{ticker}"
+        _cached_full = _ticker_cache.get(_full_key)
+        if _cached_full is not None:
+            return _cached_full
+
+        # Cached profile (15min TTL) — get_ticker_profile hace 4-6 llamadas API
+        _profile_key = f"profile:{ticker}"
+        _cached_profile = _ticker_cache.get(_profile_key)
+        if _cached_profile is not None:
+            profile = TickerProfile(**_cached_profile)
+        else:
+            profile = enrichment.get_ticker_profile(ticker)
+            _ticker_cache.set(_profile_key, profile.model_dump(), ttl_seconds=900)
         company = db.parquet.get_company_by_ticker(ticker)
         if company:
             profile.cik = company.cik
@@ -257,7 +322,7 @@ def cmd_serve(args: argparse.Namespace) -> int:
         if not filings:
             try:
                 from pipeline import ScanPipeline
-                result = ScanPipeline().scan_ticker(ticker, run_rag=False)
+                result = _shared_pipeline.scan_ticker(ticker, run_rag=False)
                 if result and result.filings_processed > 0:
                     filings = result.filings
                     profile = result.profile
@@ -268,6 +333,7 @@ def cmd_serve(args: argparse.Namespace) -> int:
         # Si faltan filings, traerlos de SEC directo (desde SEC)
         from models import FilingDilution
         from datetime import datetime as _dt
+        import re as _re
         if len(filings) < 30 and profile.cik:
             try:
                 from scanners.company_facts import CompanyFactsClient
@@ -277,42 +343,55 @@ def cmd_serve(args: argparse.Namespace) -> int:
                 for sf in sec_filings:
                     if sf.accession_number not in seen:
                         seen.add(sf.accession_number)
+                        _summary = sf.description or f'Form {sf.form_type}'
+                        _desc_lower = _summary.lower()
+                        _is_merger = _re.search(r'\bmerger\b|\bmerger agreement\b', _desc_lower) is not None
+                        _has_warrants = _re.search(r'\bwarrant', _desc_lower) is not None and not _is_merger
+                        _has_atm = _re.search(r'\bat[-\s]?the[-\s]?market\b|atm ', _desc_lower) is not None
+                        _has_full_ratchet = 'full ratchet' in _desc_lower
+                        _has_prefunded = 'prefunded' in _desc_lower
                         filings.append(FilingDilution(
                             accession_number=sf.accession_number,
                             cik=profile.cik, ticker=ticker.upper(),
                             form_type=sf.form_type,
                             filed_date=_dt.strptime(sf.filed_date, '%Y-%m-%d').date() if isinstance(sf.filed_date, str) else sf.filed_date,
                             source_url=str(sf.url),
-                            summary=sf.description or f'Form {sf.form_type}',
+                            summary=_summary,
+                            warrants_found=_has_warrants,
+                            has_atm=_has_atm,
+                            has_full_ratchet=_has_full_ratchet,
+                            has_prefunded_warrants=_has_prefunded,
                         ))
-                # Generate rich headlines with DeepSeek for recent filings
-                try:
-                    from dilution_rag import DilutionRAGExtractor
-                    _rag_h = DilutionRAGExtractor()
-                    for _sf in sec_filings[:20]:
-                        _url = str(_sf.url)
-                        _h = _rag_h.generate_headline(_url)
-                        if _h:
-                            for _f in filings:
-                                if getattr(_f, 'accession_number', None) == _sf.accession_number:
-                                    _f.summary = _h
-                                    break
-                except Exception:
-                    pass
                 logger.info("Complementados %d filings desde SEC para %s", len(sec_filings), ticker)
             except Exception as exc:
                 logger.warning("SEC complement fallo para %s: %s", ticker, exc)
 
-        candles = enrichment.polygon.get_candles(ticker, days=365)
-        news = enrichment.get_company_news(
-            ticker,
-            company_name=profile.company_name,
-            filings=filings,
-            limit=30,
-        )
-        # Solo noticias reales — los filings ya van en la sección filings
-        real_news = [n for n in news if n.source_type not in ("sec", "edgar")]
-        news_payload = [n.model_dump() for n in real_news]
+        # Candles — si falla Polygon, devolver vacío sin cascada
+        try:
+            candles = enrichment.polygon.get_candles(ticker, days=365)
+        except Exception as exc:
+            logger.warning("Candles fallo para %s: %s", ticker, exc)
+            candles = []
+
+        # Cached news (5min TTL)
+        _news_key = f"news:{ticker}"
+        _cached_news = _ticker_cache.get(_news_key)
+        if _cached_news is not None:
+            news_payload = _cached_news
+        else:
+            try:
+                news = enrichment.get_company_news(
+                    ticker,
+                    company_name=profile.company_name,
+                    filings=filings,
+                    limit=30,
+                )
+                real_news = [n for n in news if n.source_type not in ("sec", "edgar")]
+                news_payload = [n.model_dump() for n in real_news]
+                _ticker_cache.set(_news_key, news_payload, ttl_seconds=300)
+            except Exception as exc:
+                logger.warning("News fallo para %s: %s", ticker, exc)
+                news_payload = []
         risk = _risk(filings, profile)
         result = {
             "profile": profile.model_dump(),
@@ -326,40 +405,63 @@ def cmd_serve(args: argparse.Namespace) -> int:
                                                     _insights(filings, profile, risk)),
             "dilution": _dilution_detail(filings, profile, risk),
         }
-        # Generate AI research report in Spanish via DeepSeek
+        # Generate AI research report in Spanish via DeepSeek (cached 1h, skip on miss)
         try:
-            from dilution_rag import DilutionRAGExtractor
-            _rag_r = DilutionRAGExtractor()
-            _ai_report = _rag_r.generate_research_report(ticker.upper(), {
-                "profile": profile.model_dump() if hasattr(profile, "model_dump") else profile,
-                "filings": [f.model_dump() if hasattr(f, "model_dump") else f for f in filings],
-                "risk": risk.model_dump() if hasattr(risk, "model_dump") else risk,
-            })
-            if _ai_report:
-                result["research_summary"] = _ai_report
+            _report_key = f"research:{ticker}"
+            _cached_report = _ticker_cache.get(_report_key)
+            if _cached_report is not None:
+                result["research_summary"] = _cached_report
+            else:
+                from dilution_rag import DilutionRAGExtractor
+                _rag_r = DilutionRAGExtractor()
+                _ai_report = _rag_r.generate_research_report(ticker.upper(), {
+                    "profile": profile.model_dump() if hasattr(profile, "model_dump") else profile,
+                    "filings": [f.model_dump() if hasattr(f, "model_dump") else f for f in filings],
+                    "risk": risk.model_dump() if hasattr(risk, "model_dump") else risk,
+                })
+                if _ai_report:
+                    result["research_summary"] = _ai_report
+                    _ticker_cache.set(_report_key, _ai_report, ttl_seconds=3600)
         except Exception:
             pass
+        # Cache full response 15min antes de devolver
+        _ticker_cache.set(_full_key, result, ttl_seconds=900)
         return result
 
     @app.get("/ticker/{ticker}/dilution")
+    @_single_flight(lambda ticker: f"dilution:{ticker.upper()}")
     def ticker_dilution_detail(ticker: str):
-        """Full dilution tracker data for a ticker."""
-        profile = enrichment.get_ticker_profile(ticker)
+        """Full dilution tracker data for a ticker (cached 15min)."""
+        ticker = ticker.upper()
+        # Cache respuesta completa 15min — así cambiar de pestaña no refetch
+        _dil_key = f"dilution:{ticker}"
+        _cached_dil = _ticker_cache.get(_dil_key)
+        if _cached_dil is not None:
+            return _cached_dil
+
+        # Cached profile (misma cache que /ticker/{ticker})
+        _profile_key = f"profile:{ticker}"
+        _cached_profile = _ticker_cache.get(_profile_key)
+        if _cached_profile is not None:
+            profile = TickerProfile(**_cached_profile)
+        else:
+            profile = enrichment.get_ticker_profile(ticker)
+            _ticker_cache.set(_profile_key, profile.model_dump(), ttl_seconds=900)
+
         company = db.parquet.get_company_by_ticker(ticker)
         filings = db.parquet.get_filings_by_ticker(ticker)
 
         if not filings:
             try:
                 from pipeline import ScanPipeline
-                result = ScanPipeline().scan_ticker(ticker, run_rag=False)
+                result = _shared_pipeline.scan_ticker(ticker, run_rag=False)
                 if result and result.filings_processed > 0:
                     filings = result.filings
                     profile = result.profile
             except Exception as exc:
                 logger.warning("Auto-scan falló para dilution de %s: %s", ticker, exc)
 
-        from dilution_tracker import DilutionTrackerService
-        tracker = DilutionTrackerService()
+        tracker = _shared_tracker
         data = tracker.get_dilution_data(
             ticker=ticker,
             company=company,
@@ -372,16 +474,25 @@ def cmd_serve(args: argparse.Namespace) -> int:
         data.country = profile.country
         data.sector = profile.sector
         data.exchange = profile.exchange
-        return data.model_dump()
+        result = data.model_dump()
+        _ticker_cache.set(_dil_key, result, ttl_seconds=900)
+        return result
 
     @app.get("/ticker/{ticker}/news")
+    @_single_flight(lambda ticker, limit=30: f"newsapi:{ticker.upper()}:{limit}")
     def ticker_news(ticker: str, limit: int = 30):
+        ticker = ticker.upper()
+        # Cache respuesta 5min (misma TTL que la news cache de /ticker/{ticker})
+        _napi_key = f"newsapi:{ticker}:{limit}"
+        _cached_napi = _ticker_cache.get(_napi_key)
+        if _cached_napi is not None:
+            return _cached_napi
         profile = enrichment.get_ticker_profile(ticker)
         filings = db.parquet.get_filings_by_ticker(ticker)
         if not filings:
             try:
                 from pipeline import ScanPipeline
-                result = ScanPipeline().scan_ticker(ticker, run_rag=False)
+                result = _shared_pipeline.scan_ticker(ticker, run_rag=False)
                 if result and result.filings_processed > 0:
                     filings = result.filings
             except Exception as exc:
@@ -392,7 +503,9 @@ def cmd_serve(args: argparse.Namespace) -> int:
             filings=filings,
             limit=limit,
         )
-        return [n.model_dump() for n in news if n.source_type not in ("sec", "edgar")]
+        result = [n.model_dump() for n in news if n.source_type not in ("sec", "edgar")]
+        _ticker_cache.set(_napi_key, result, ttl_seconds=300)
+        return result
 
     @app.get("/dilution/top")
     def top_dilution(limit: int = 20):
@@ -413,7 +526,7 @@ def cmd_serve(args: argparse.Namespace) -> int:
     @app.post("/scan/{ticker}")
     def scan_ticker_api(ticker: str, max_filings: int = 30):
         from pipeline import ScanPipeline
-        result = ScanPipeline().scan_ticker(ticker, run_rag=False, max_filings=max_filings)
+        result = _shared_pipeline.scan_ticker(ticker, run_rag=False, max_filings=max_filings)
         return result.model_dump()
 
     @app.get("/screener/gap")
@@ -426,7 +539,19 @@ def cmd_serve(args: argparse.Namespace) -> int:
         from screener import GapScreener
         return GapScreener().halts()
 
-    def _risk(filings, profile=None) -> RiskAssessment:
+    def _risk(filings: list, profile=None) -> RiskAssessment:
+        """Assess dilution risk levels across multiple dimensions.
+
+        Evaluates offering ability, offering frequency, dilution percentage,
+        cash need, and warrant exercise risk from a list of filings.
+
+        Args:
+            filings: List of FilingDilution objects.
+            profile: Optional TickerProfile for cash/share and price data.
+
+        Returns:
+            RiskAssessment with categorized risk levels.
+        """
         if not filings:
             return RiskAssessment()
         max_d = max((f.dilution_percentage or 0 for f in filings), default=0)
@@ -498,7 +623,20 @@ def cmd_serve(args: argparse.Namespace) -> int:
             warrant_exercise=warrant_exercise,
         )
 
-    def _insights(filings, profile, risk) -> list:
+    def _insights(filings: list, profile, risk) -> list:
+        """Generate human-readable insights from filings and risk data.
+
+        Creates insight entries for high dilution, ATM provisions, warrants,
+        shelf registrations, cash runway concerns, and overall risk levels.
+
+        Args:
+            filings: List of FilingDilution objects.
+            profile: TickerProfile with company financial data.
+            risk: RiskAssessment from _risk().
+
+        Returns:
+            List of insight dicts with category, severity, title, body.
+        """
         """Generate insights array from filing data for the frontend."""
         result = []
         seen = set()
@@ -563,7 +701,22 @@ def cmd_serve(args: argparse.Namespace) -> int:
                 "Financial Data", "")
         return result
 
-    def _research_summary(ticker, filings, profile, risk, insights) -> str:
+    def _research_summary(ticker: str, filings: list, profile, risk, insights: list) -> str:
+        """Generate a one-paragraph research summary from available data.
+
+        Aggregates filing count, risk flags, cash position, and insights
+        into a concise summary string for the frontend.
+
+        Args:
+            ticker: Ticker symbol.
+            filings: List of FilingDilution objects.
+            profile: TickerProfile.
+            risk: RiskAssessment.
+            insights: Insights list from _insights().
+
+        Returns:
+            Plain-text summary paragraph.
+        """
         """Generate a one-paragraph research summary from available data."""
         parts = []
         n_filings = len(filings)
@@ -638,7 +791,20 @@ def cmd_serve(args: argparse.Namespace) -> int:
             })
         return result
 
-    def _dilution_detail(filings, profile, risk) -> dict:
+    def _dilution_detail(filings: list, profile, risk) -> dict:
+        """Build dilution detail object for the frontend dashboard.
+
+        Includes estimated dilution percentage, risk level, shelf status,
+        ATM capacity, warrant details, share structure, and event timeline.
+
+        Args:
+            filings: List of FilingDilution objects.
+            profile: TickerProfile with company data.
+            risk: RiskAssessment from _risk().
+
+        Returns:
+            Dict with dilution, shelf, atm, warrants, flags, events.
+        """
         """Build dilution detail object for the frontend."""
         max_dil = max((f.dilution_percentage or 0 for f in filings), default=0)
         shelf_filings = [f for f in filings if (f.shelf_amount_usd or 0) > 0]

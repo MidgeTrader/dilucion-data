@@ -5,8 +5,7 @@ from __future__ import annotations
 import logging
 import xml.etree.ElementTree as ET
 
-import httpx
-
+from apis.connection_pool import get_client
 from cache import TTLCache
 from config import get_settings
 from models import NewsArticle
@@ -33,18 +32,18 @@ class BenzingaClient:
             return []
 
         try:
-            with httpx.Client(timeout=25) as client:
-                resp = client.get(
-                    self.BASE,
-                    params={
-                        "tickers": symbol,
-                        "pageSize": limit,
-                        "displayOutput": "full",
-                        "token": self.api_key,
-                    },
-                )
-                resp.raise_for_status()
-                root = ET.fromstring(resp.text)
+            client = get_client(timeout=25)
+            resp = client.get(
+                self.BASE,
+                params={
+                    "tickers": symbol,
+                    "pageSize": limit,
+                    "displayOutput": "full",
+                    "token": self.api_key,
+                },
+            )
+            resp.raise_for_status()
+            root = ET.fromstring(resp.text)
         except Exception as exc:
             logger.error("Benzinga news error for %s: %s", symbol, exc)
             return []

@@ -11,6 +11,7 @@ import logging
 import re
 import sqlite3
 import hashlib
+import threading
 from datetime import datetime
 from typing import Optional
 
@@ -126,50 +127,73 @@ class DilutionRAGExtractor:
         self._init_cache()
 
     def _init_cache(self) -> None:
-        """SQLite cache for extracted results."""
+        """SQLite cache for extracted results (thread-local connection)."""
         path = self.settings.data_dir / "extraction_cache.sqlite"
         self._cache_path = str(path)
+        self._cache_local = threading.local()
         try:
-            with sqlite3.connect(self._cache_path) as conn:
-                conn.execute("""
-                    CREATE TABLE IF NOT EXISTS extraction_cache (
-                        url_hash TEXT PRIMARY KEY,
-                        extraction_type TEXT,
-                        result_json TEXT,
-                        model TEXT,
-                        created_at TEXT
-                    )
-                """)
-                conn.execute("CREATE INDEX IF NOT EXISTS idx_extraction_type ON extraction_cache(extraction_type)")
+            # Initialize schema in the current thread
+            conn = self._get_cache_conn()
+            conn.execute("""
+                CREATE TABLE IF NOT EXISTS extraction_cache (
+                    url_hash TEXT PRIMARY KEY,
+                    extraction_type TEXT,
+                    result_json TEXT,
+                    model TEXT,
+                    created_at TEXT
+                )
+            """)
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_extraction_type ON extraction_cache(extraction_type)")
         except Exception as exc:
             logger.warning("Cache init failed (non-fatal): %s", exc)
+
+    def _get_cache_conn(self) -> Optional[sqlite3.Connection]:
+        """Thread-local cache connection — one per thread."""
+        conn: Optional[sqlite3.Connection] = getattr(self._cache_local, "conn", None)
+        if conn is None:
+            try:
+                conn = sqlite3.connect(self._cache_path, timeout=10)
+                conn.execute("PRAGMA journal_mode=WAL")
+                conn.execute("PRAGMA busy_timeout=5000")
+                self._cache_local.conn = conn
+            except Exception as exc:
+                logger.warning("Cache conn failed: %s", exc)
+                return None
+        return conn
 
     def _cache_key(self, url: str, extraction_type: str) -> str:
         return hashlib.sha256(f"{url}:{extraction_type}".encode()).hexdigest()[:32]
 
     def _cache_get(self, url: str, extraction_type: str) -> Optional[dict]:
+        conn = self._get_cache_conn()
+        if conn is None:
+            return None
         try:
             key = self._cache_key(url, extraction_type)
-            with sqlite3.connect(self._cache_path) as conn:
-                row = conn.execute(
-                    "SELECT result_json FROM extraction_cache WHERE url_hash = ? AND extraction_type = ?",
-                    (key, extraction_type)
-                ).fetchone()
-                if row:
-                    return json.loads(row[0])
+            row = conn.execute(
+                "SELECT result_json FROM extraction_cache WHERE url_hash = ? AND extraction_type = ?",
+                (key, extraction_type)
+            ).fetchone()
+            if row:
+                return json.loads(row[0])
         except Exception:
             pass
         return None
 
     def _cache_set(self, url: str, extraction_type: str, data: dict) -> None:
+        conn = self._get_cache_conn()
+        if conn is None:
+            return
         try:
             key = self._cache_key(url, extraction_type)
-            with sqlite3.connect(self._cache_path) as conn:
-                conn.execute(
-                    "INSERT OR REPLACE INTO extraction_cache VALUES (?, ?, ?, ?, ?)",
-                    (key, extraction_type, json.dumps(data), self.settings.deepseek_model,
-                     datetime.utcnow().isoformat())
-                )
+            conn.execute(
+                "INSERT OR REPLACE INTO extraction_cache VALUES (?, ?, ?, ?, ?)",
+                (key, extraction_type, json.dumps(data), self.settings.deepseek_model,
+                 datetime.utcnow().isoformat())
+            )
+            # Sin commit el INSERT queda solo en la conexión thread-local y se
+            # pierde al reiniciar el proceso — la caché nunca persistía.
+            conn.commit()
         except Exception as exc:
             logger.debug("Cache set failed: %s", exc)
 

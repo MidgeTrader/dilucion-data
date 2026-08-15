@@ -25,6 +25,7 @@
 .vscode/
 __pycache__/
 backend/.env
+backend.BAK*/
 build/
 chroma/
 data/

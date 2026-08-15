@@ -8,10 +8,13 @@
   html {
     @apply bg-surface text-gray-100 antialiased;
     font-family: 'Inter', system-ui, sans-serif;
+    scroll-padding-top: 60px;
   }
 
   body {
     @apply min-h-screen bg-surface;
+    /* Safari toolbar overlap fix: viewport-fit=cover en _document.js + esto */
+    padding-top: env(safe-area-inset-top, 0px);
   }
 
   ::-webkit-scrollbar {

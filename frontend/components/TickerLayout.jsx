@@ -16,13 +16,13 @@ export default function TickerLayout({ activeNav, title, children }) {
         <title>{pageTitle}</title>
       </Head>
 
-      <div className="flex flex-col h-screen overflow-hidden">
+      <div className="flex flex-col min-h-screen">
         <TopNav />
 
-      <div className="flex flex-1 min-h-0">
+        <div className="flex flex-1">
           <TickerSidebar profile={profile} activeNav={activeNav} ticker={tickerUpper} />
 
-          <main className="flex-1 overflow-y-auto bg-surface p-4">
+          <main className="flex-1 bg-surface p-4 pt-6">
             {error ? (
               <div className="flex items-center justify-center min-h-[60vh]">
                 <div className="text-center max-w-md">

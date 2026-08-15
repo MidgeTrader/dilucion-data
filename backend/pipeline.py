@@ -125,12 +125,18 @@ class ScanPipeline:
 
         processed: List[FilingDilution] = []
         rag_results: List[ScanResult] = []
+        seen_urls: set[str] = set()
 
         for meta in filings_meta[:max_filings]:
             try:
                 url = str(meta.url)
                 if not url.endswith(".htm") and not url.endswith(".html"):
                     url = url.replace("-index.htm", ".htm") if "-index" in url else url
+
+                # Skip duplicate URLs — some filings share the same document
+                if url in seen_urls:
+                    continue
+                seen_urls.add(url)
 
                 parsed = self.parser.parse(url)
                 ext = parsed.extraction

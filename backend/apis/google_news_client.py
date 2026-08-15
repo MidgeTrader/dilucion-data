@@ -7,8 +7,7 @@ import xml.etree.ElementTree as ET
 from datetime import datetime, timezone
 from urllib.parse import quote_plus
 
-import httpx
-
+from apis.connection_pool import get_client
 from cache import TTLCache
 from config import get_settings
 from models import NewsArticle
@@ -38,10 +37,10 @@ class GoogleNewsClient:
 
         url = f"{self.BASE}?q={quote_plus(query)}&hl=en-US&gl=US&ceid=US:en"
         try:
-            with httpx.Client(timeout=20, follow_redirects=True) as client:
-                resp = client.get(url, headers={"User-Agent": "Mozilla/5.0 (compatible; DilutionTracker/1.0)"})
-                resp.raise_for_status()
-                root = ET.fromstring(resp.text)
+            client = get_client(timeout=20, follow_redirects=True)
+            resp = client.get(url, headers={"User-Agent": "Mozilla/5.0 (compatible; DilutionTracker/1.0)"})
+            resp.raise_for_status()
+            root = ET.fromstring(resp.text)
         except Exception as exc:
             logger.error("Google News RSS error for %s: %s", symbol, exc)
             return []

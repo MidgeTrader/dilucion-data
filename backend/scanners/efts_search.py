@@ -6,9 +6,9 @@ import logging
 import time
 from typing import List, Optional
 
-import httpx
 from tenacity import retry, stop_after_attempt, wait_exponential
 
+from apis.connection_pool import get_client
 from config import get_settings
 from models import SearchHit
 
@@ -59,13 +59,13 @@ class EFTSSearch:
 
         time.sleep(0.1)
         try:
-            with httpx.Client(timeout=30) as client:
-                resp = client.post(EFTS_URL, json=payload, headers=self.headers)
-                if resp.status_code in (403, 429):
-                    logger.warning("EFTS returned %d for query: %s", resp.status_code, query)
-                    return []
-                resp.raise_for_status()
-                data = resp.json()
+            client = get_client(timeout=30)
+            resp = client.post(EFTS_URL, json=payload, headers=self.headers)
+            if resp.status_code in (403, 429):
+                logger.warning("EFTS returned %d for query: %s", resp.status_code, query)
+                return []
+            resp.raise_for_status()
+            data = resp.json()
         except Exception as exc:
             logger.error("EFTS search failed: %s", exc)
             return []

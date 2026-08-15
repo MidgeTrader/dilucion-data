@@ -8,6 +8,7 @@ from typing import Optional
 
 import httpx
 
+from apis.connection_pool import get_client
 from cache import TTLCache
 from models import ShortInterestData
 
@@ -60,24 +61,24 @@ class StonktrackerClient:
     def _fetch_page(self, symbol: str) -> Optional[str]:
         """Fetch the stonktracker page HTML."""
         try:
-            with httpx.Client(timeout=20, follow_redirects=True) as client:
-                resp = client.get(
-                    f"{self.BASE}/{symbol}",
-                    headers={
-                        "User-Agent": (
-                            "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
-                            "AppleWebKit/537.36 (KHTML, like Gecko) "
-                            "Chrome/125.0.0.0 Safari/537.36"
-                        ),
-                        "Accept": "text/html,application/xhtml+xml",
-                        "Accept-Language": "en-US,en;q=0.9",
-                    },
-                )
-                if resp.status_code == 404:
-                    logger.info("Stonktracker: no page for %s", symbol)
-                    return None
-                resp.raise_for_status()
-                return resp.text
+            client = get_client(timeout=20, follow_redirects=True)
+            resp = client.get(
+                f"{self.BASE}/{symbol}",
+                headers={
+                    "User-Agent": (
+                        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
+                        "AppleWebKit/537.36 (KHTML, like Gecko) "
+                        "Chrome/125.0.0.0 Safari/537.36"
+                    ),
+                    "Accept": "text/html,application/xhtml+xml",
+                    "Accept-Language": "en-US,en;q=0.9",
+                },
+            )
+            if resp.status_code == 404:
+                logger.info("Stonktracker: no page for %s", symbol)
+                return None
+            resp.raise_for_status()
+            return resp.text
         except httpx.HTTPError as exc:
             logger.warning("Stonktracker HTTP error for %s: %s", symbol, exc)
             return None
