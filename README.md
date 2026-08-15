@@ -97,7 +97,7 @@ Swagger/docs en `http://localhost:8000/docs` (o el `API_PORT` configurado).
 ```sh
 cd frontend
 npm install
-npm run dev                              # http://localhost:3000
+npm run dev                              
 ```
 
 El frontend apunta al backend vía `NEXT_PUBLIC_BACKEND_URL` (por defecto `http://localhost:8000`).
