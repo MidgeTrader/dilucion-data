@@ -12,6 +12,7 @@ from apis.stonktracker_client import StonktrackerClient
 from apis.yfinance_client import YFinanceClient
 from cache import TTLCache
 from config import get_settings
+from data_sanity import check_profile
 from db.parquet_db import ParquetDB
 from models import Company, NewsArticle, TickerProfile
 
@@ -87,7 +88,9 @@ class DataEnrichment:
                 profile.employees = profile.employees or yf_profile.get("employees")
             if yf_profile.get("market_cap"):
                 profile.market_cap = profile.market_cap or yf_profile.get("market_cap")
-            if yf_profile.get("enterprise_value"):
+            # `is not None`, no truthy: un EV de 0.0 es un valor valido y el
+            # chequeo truthy lo descartaba en silencio.
+            if yf_profile.get("enterprise_value") is not None:
                 profile.enterprise_value = yf_profile.get("enterprise_value")
             if yf_profile.get("avg_volume"):
                 profile.avg_volume = yf_profile.get("avg_volume")
@@ -161,7 +164,9 @@ class DataEnrichment:
         except Exception as exc:
             logger.warning("Finviz failed for %s: %s", ticker, exc)
 
-        return profile
+        # Ultima parada antes de salir: ninguna fuente puede colar un valor
+        # imposible sin pasar por aqui.
+        return check_profile(profile)
 
     def get_company_news(
         self,

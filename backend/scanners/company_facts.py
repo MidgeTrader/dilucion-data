@@ -11,7 +11,7 @@ from tenacity import retry, stop_after_attempt, wait_exponential
 from apis.connection_pool import get_client
 from cache import TTLCache
 from config import get_settings
-from models import SECFilingMeta
+from models import CompanyOrigin, SECFilingMeta
 
 logger = logging.getLogger(__name__)
 
@@ -63,6 +63,31 @@ class CompanyFactsClient:
         padded = cik.zfill(10)
         return self._get(self.SEC_DATA, f"/submissions/CIK{padded}.json", f"sec:submissions:{cik}", 3600)
 
+    def get_origin(self, cik: str) -> CompanyOrigin:
+        """Lee jurisdiccion de incorporacion y pais del negocio desde EDGAR.
+
+        EDGAR es la fuente autoritativa del emisor: `submissions` declara la
+        jurisdiccion de incorporacion (`stateOfIncorporationDescription`) y el
+        pais donde radica el negocio (`addresses.business.country`). Los
+        proveedores de market data no distinguen ambos conceptos y a menudo
+        devuelven "us" por defecto, que es falso para un emisor extranjero.
+
+        Args:
+            cik: CIK del emisor, con o sin ceros a la izquierda.
+
+        Returns:
+            CompanyOrigin con los campos que EDGAR declare. Si la llamada falla
+            devuelve un CompanyOrigin vacio: nunca inventa un pais.
+        """
+        data = self.get_submissions(cik)
+        if not data:
+            return CompanyOrigin()
+        business = (data.get("addresses") or {}).get("business") or {}
+        return CompanyOrigin(
+            country_incorporation=data.get("stateOfIncorporationDescription") or None,
+            country_business=business.get("country") or None,
+        )
+
     def get_recent_filings(
         self,
         cik: str,
@@ -104,6 +129,22 @@ class CompanyFactsClient:
             if len(results) >= limit:
                 break
         return results
+
+    def get_facts(self, cik: str) -> Optional[dict]:
+        """Hechos XBRL completos del emisor, cacheados 2h.
+
+        Una sola llamada sirve para caja, flujo de operaciones y acciones: el
+        endpoint companyfacts devuelve todos los conceptos de golpe. Comparte
+        clave de cache con get_shares_outstanding, asi que no duplica descargas.
+
+        Args:
+            cik: CIK del emisor, con o sin ceros a la izquierda.
+
+        Returns:
+            El JSON crudo de companyfacts, o None si la llamada falla.
+        """
+        padded = cik.zfill(10)
+        return self._get(self.SEC_DATA, f"/api/xbrl/companyfacts/CIK{padded}.json", f"sec:facts:{cik}", 7200)
 
     def get_shares_outstanding(self, cik: str) -> Optional[float]:
         """Extract shares outstanding from company facts XBRL."""

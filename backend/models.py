@@ -148,6 +148,33 @@ class ShortInterestData(BaseModel):
     source: str = "stonktracker"
 
 
+class CompanyOrigin(BaseModel):
+    """Procedencia del emisor segun EDGAR (endpoint submissions).
+
+    Son dos paises distintos y no intercambiables: una sociedad puede estar
+    registrada en las Islas Caiman y operar en China. Los proveedores de
+    market data suelen devolver solo uno (o ninguno), por eso se leen aqui.
+    """
+
+    country_incorporation: Optional[str] = None
+    country_business: Optional[str] = None
+
+
+class CashBurn(BaseModel):
+    """Pista de caja derivada de EDGAR (XBRL). Ver backend/burn.py.
+
+    No confundir con `CashPosition`, que sale del tracker de dilucion leyendo el
+    texto de los filings con regex y solo mira 10-Q/10-K — o sea, es ciego a los
+    FPI. Este se calcula sobre datos estructurados y los cubre.
+    """
+
+    cash: Optional[float] = None
+    cash_as_of: Optional[str] = None
+    operating_cash_flow_annual: Optional[float] = None
+    months_of_cash: Optional[float] = None
+    is_burning: Optional[bool] = None
+
+
 class TickerProfile(BaseModel):
     ticker: str
     cik: Optional[str] = None
@@ -155,6 +182,8 @@ class TickerProfile(BaseModel):
     sector: Optional[str] = None
     industry: Optional[str] = None
     country: Optional[str] = None
+    country_incorporation: Optional[str] = None
+    is_fpi: Optional[bool] = None
     exchange: Optional[str] = None
     float_shares: Optional[float] = None
     shares_outstanding: Optional[float] = None
@@ -172,6 +201,10 @@ class TickerProfile(BaseModel):
     description: Optional[str] = None
     about: Optional[str] = None
     website: Optional[str] = None
+    # Pista de caja desde EDGAR. Ver backend/burn.py.
+    months_of_cash: Optional[float] = None
+    cash_balance_date: Optional[str] = None
+    cash_burn_annual: Optional[float] = None
 
 
 class RiskAssessment(BaseModel):

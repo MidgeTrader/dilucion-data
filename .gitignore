@@ -9,6 +9,10 @@
 *.egg
 *.egg-info/
 *.log
+# Los logs rotados (server.log.2026-09-20-...) NO acababan en .log, asi que
+# *.log no los cubria y se colaban al commit. Llevan URLs con la clave de API
+# dentro, y este repo es publico.
+*.log.*
 *.parquet
 *.py[cod]
 *.sqlite
@@ -25,7 +29,13 @@
 .vscode/
 __pycache__/
 backend/.env
+<<<<<<< HEAD
 backend.BAK*/
+=======
+# Copias locales del backend (backend.BAK.<fecha>/): codigo viejo duplicado y
+# su propio .env. No deben subirse.
+backend.BAK.*/
+>>>>>>> b738924 (Backend: pista de caja (Time to Burn), FPI y fin de las claves en los logs)
 build/
 chroma/
 data/

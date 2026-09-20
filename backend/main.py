@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import logging
+import re
 import sys
 from typing import List, Optional
 
@@ -13,7 +14,92 @@ logging.basicConfig(
     format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
     datefmt="%Y-%m-%d %H:%M:%S",
 )
+
+# Varios proveedores llevan la clave en el query string (Massive, EODHD) y
+# httpx loguea la URL completa a nivel INFO, asi que acababa escrita en claro
+# en server.log; los errores de red citan tambien la URL entera. Bajar httpx a
+# WARNING quita el grueso y el filtro tapa el resto: ninguna ruta de log debe
+# poder escribir una clave, venga de donde venga.
+logging.getLogger("httpx").setLevel(logging.WARNING)
+logging.getLogger("httpcore").setLevel(logging.WARNING)
+
+_CLAVE_EN_URL = re.compile(
+    r"((?:apiKey|apikey|api_key|api_token|access_token|token)=)[^&\s\"']+",
+    re.IGNORECASE,
+)
+
+
+def _redactar(texto: str) -> str:
+    """Tapa el valor de una clave embebida en una URL.
+
+    Args:
+        texto: Texto que puede contener un query string con credenciales.
+
+    Returns:
+        El mismo texto con el valor sustituido por <REDACTED>; el nombre de la
+        clave se conserva para que el log siga siendo legible.
+    """
+    return _CLAVE_EN_URL.sub(r"\1<REDACTED>", texto)
+
+
+def _redactar_si_texto(valor: object) -> object:
+    """Aplica la redaccion solo si el valor es texto."""
+    return _redactar(valor) if isinstance(valor, str) else valor
+
+
+def _redactar_registro(record: logging.LogRecord) -> None:
+    """Redacta el mensaje y los argumentos de un registro, in situ."""
+    if isinstance(record.msg, str):
+        record.msg = _redactar(record.msg)
+    if record.args:
+        if isinstance(record.args, dict):
+            record.args = {k: _redactar_si_texto(v) for k, v in record.args.items()}
+        else:
+            record.args = tuple(_redactar_si_texto(a) for a in record.args)
+
+
+def _instalar_redaccion_de_claves() -> None:
+    """Redacta claves en TODO registro, venga del logger que venga.
+
+    Se instala sobre la factoria global de registros y no como filtro de un
+    handler porque uvicorn reconfigura el logging al arrancar (dictConfig) y
+    recrea los handlers: un filtro colgado de ellos desaparece. La factoria,
+    en cambio, sobrevive a cualquier reconfiguracion.
+    """
+    factoria_previa = logging.getLogRecordFactory()
+
+    def _factoria(*args: object, **kwargs: object) -> logging.LogRecord:
+        record = factoria_previa(*args, **kwargs)
+        _redactar_registro(record)
+        return record
+
+    logging.setLogRecordFactory(_factoria)
+
+
+_instalar_redaccion_de_claves()
+
 logger = logging.getLogger("sec_dilution")
+
+# Formas en que los proveedores de market data devuelven EE.UU. No usan un
+# formato comun, y "us" es ademas su valor por defecto cuando no saben el pais.
+_US_NAMES = frozenset({
+    "us", "usa", "u.s.", "u.s.a.",
+    "united states", "united states of america",
+})
+
+
+def _is_united_states(country: Optional[str]) -> bool:
+    """Indica si un pais enriquecido corresponde a EE.UU.
+
+    Args:
+        country: Pais tal cual lo devuelve el proveedor.
+
+    Returns:
+        True si el valor es una de las formas habituales de nombrar EE.UU.
+    """
+    if not country:
+        return False
+    return country.strip().lower() in _US_NAMES
 
 
 def cmd_scan_ticker(args: argparse.Namespace) -> int:
@@ -330,6 +416,22 @@ def cmd_serve(args: argparse.Namespace) -> int:
             except Exception as exc:
                 logger.warning("Auto-scan fallo para %s: %s", ticker, exc)
 
+        # El perfil que devuelve el auto-scan no trae CIK y reemplaza entero el
+        # que se resolvio desde el parquet, asi que los tres bloques que
+        # dependen de el (filings SEC, jurisdiccion y quema de caja) se
+        # saltarian en silencio. Se recupera desde el ticker: una sola
+        # descarga de company_tickers.json, cacheada 24 h.
+        if not profile.cik:
+            try:
+                from scanners.company_facts import CompanyFactsClient
+                profile.cik = CompanyFactsClient().resolve_cik_from_ticker(ticker)
+                if profile.cik:
+                    logger.info("CIK resuelto desde ticker para %s: %s", ticker, profile.cik)
+                else:
+                    logger.info("Sin CIK para %s: no consta en el indice de la SEC", ticker)
+            except Exception as exc:
+                logger.warning("Resolucion de CIK fallo para %s: %s", ticker, exc)
+
         # Si faltan filings, traerlos de SEC directo (desde SEC)
         from models import FilingDilution
         from datetime import datetime as _dt
@@ -365,6 +467,47 @@ def cmd_serve(args: argparse.Namespace) -> int:
                 logger.info("Complementados %d filings desde SEC para %s", len(sec_filings), ticker)
             except Exception as exc:
                 logger.warning("SEC complement fallo para %s: %s", ticker, exc)
+
+        # FPI — se deriva de los formularios ya cargados, sin llamada extra a API.
+        # Se calcula despues de leer la cache de perfil para no servir un valor obsoleto.
+        from fpi import is_foreign_private_issuer
+        profile.is_fpi = is_foreign_private_issuer(f.form_type for f in filings)
+
+        # Pais: EDGAR manda sobre el enriquecimiento. Se leen los DOS paises
+        # porque son distintos (p. ej. registrada en Caiman, opera en China) y
+        # los proveedores de market data solo devuelven uno, a menudo "us" por
+        # defecto — que es falso para un emisor extranjero.
+        if profile.cik:
+            try:
+                from scanners.company_facts import CompanyFactsClient
+                origin = CompanyFactsClient().get_origin(profile.cik)
+                profile.country_incorporation = origin.country_incorporation
+                if origin.country_business:
+                    profile.country = origin.country_business
+                elif profile.is_fpi and _is_united_states(profile.country):
+                    # Un FPI no puede estar incorporado en EE.UU. (Rule 3b-4),
+                    # asi que "us" aqui es el default del proveedor, no un dato.
+                    logger.info("Pais '%s' descartado para %s: es FPI", profile.country, ticker)
+                    profile.country = None
+            except Exception as exc:
+                logger.warning("Origen SEC fallo para %s: %s", ticker, exc)
+
+        # Pista de caja desde EDGAR (XBRL). El tracker de dilucion solo mira
+        # 10-Q/10-K, asi que es ciego a los FPI, que presentan 20-F; esto los
+        # cubre. Comparte cache con el resto de llamadas a companyfacts.
+        if profile.cik:
+            try:
+                from burn import extract_cash_burn
+                from scanners.company_facts import CompanyFactsClient
+                facts = CompanyFactsClient().get_facts(profile.cik) or {}
+                cb = extract_cash_burn(facts)
+                profile.months_of_cash = cb.months_of_cash
+                profile.cash_balance_date = cb.cash_as_of
+                # La quema solo se expone si de verdad quema: un flujo positivo
+                # no es una quema de signo contrario, es la ausencia de quema.
+                profile.cash_burn_annual = cb.operating_cash_flow_annual if cb.is_burning else None
+            except Exception as exc:
+                logger.warning("Pista de caja fallo para %s: %s", ticker, exc)
 
         # Candles — si falla Polygon, devolver vacío sin cascada
         try:

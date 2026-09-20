@@ -106,7 +106,7 @@ class ScanPipeline:
             float_shares=profile.float_shares,
             shares_outstanding=shares,
             sector=profile.sector,
-            country=profile.country or "US",
+            country=profile.country,
         ))
 
         filings_meta = self.facts.get_recent_filings(cik, form_filter=ALL_FORMS, limit=max_filings * 3)
