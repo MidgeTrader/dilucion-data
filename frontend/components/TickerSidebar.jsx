@@ -1,5 +1,6 @@
 import Link from 'next/link';
 import TickerAvatar from './TickerAvatar';
+import { fpiRow } from '../lib/fpi';
 
 const NAV = [
   { id: 'overview', label: 'Overview', segment: '' },
@@ -10,11 +11,16 @@ const NAV = [
   { id: 'transcripts', label: 'Transcripts', segment: '/transcripts' },
 ];
 
+// Los umbrales se comparan contra el valor absoluto: con `n >= 1e6` un
+// negativo no pasaba ningun if y caia al final, pintandose en crudo.
+// Para positivos la salida es identica a la de antes.
 function fmtNum(n) {
   if (n == null) return '—';
-  if (n >= 1e9) return `${(n / 1e9).toFixed(2)} B`;
-  if (n >= 1e6) return `${(n / 1e6).toFixed(2)} M`;
-  if (n >= 1e3) return `${(n / 1e3).toFixed(2)} K`;
+  const abs = Math.abs(n);
+  const sign = n < 0 ? '-' : '';
+  if (abs >= 1e9) return `${sign}${(abs / 1e9).toFixed(2)} B`;
+  if (abs >= 1e6) return `${sign}${(abs / 1e6).toFixed(2)} M`;
+  if (abs >= 1e3) return `${sign}${(abs / 1e3).toFixed(2)} K`;
   return n.toLocaleString();
 }
 
@@ -26,6 +32,8 @@ export default function TickerSidebar({ profile, activeNav = 'overview', ticker:
     { label: 'Market Cap', value: fmtNum(profile?.market_cap) },
     { label: 'Float', value: fmtNum(profile?.float_shares) },
     { label: 'Country', value: profile?.country || '—' },
+    { label: 'Incorporated', value: profile?.country_incorporation || '—' },
+    { label: 'FPI', ...fpiRow(profile?.is_fpi) },
     { label: 'Sector', value: profile?.sector || '—' },
     { label: 'Exchange', value: profile?.exchange || '—' },
   ];
@@ -61,7 +69,12 @@ export default function TickerSidebar({ profile, activeNav = 'overview', ticker:
         {quickStats.map((s) => (
           <div key={s.label} className="flex justify-between py-1.5 text-xs">
             <span className="text-gray-500 shrink-0 mr-2">{s.label}</span>
-            <span className="text-gray-200 font-medium text-right truncate max-w-[130px] text-[10px] leading-4">{s.value}</span>
+            <span
+              className={`font-medium text-right truncate max-w-[130px] text-[10px] leading-4 ${s.highlight || 'text-gray-200'}`}
+              title={s.title || undefined}
+            >
+              {s.value}
+            </span>
           </div>
         ))}
       </div>

@@ -1,8 +1,12 @@
+// Los umbrales se comparan contra el valor absoluto: ver TickerSidebar.jsx.
+// Para positivos la salida es identica a la de antes.
 function formatNumber(num) {
   if (num == null) return '—';
-  if (num >= 1e9) return `${(num / 1e9).toFixed(2)}B`;
-  if (num >= 1e6) return `${(num / 1e6).toFixed(2)}M`;
-  if (num >= 1e3) return `${(num / 1e3).toFixed(1)}K`;
+  const abs = Math.abs(num);
+  const sign = num < 0 ? '-' : '';
+  if (abs >= 1e9) return `${sign}${(abs / 1e9).toFixed(2)}B`;
+  if (abs >= 1e6) return `${sign}${(abs / 1e6).toFixed(2)}M`;
+  if (abs >= 1e3) return `${sign}${(abs / 1e3).toFixed(1)}K`;
   return num.toLocaleString();
 }
 
@@ -51,7 +55,8 @@ export default function MetricsCard({ profile, loading, error }) {
         Sector Metrics
       </h3>
       <MetricRow label="Sector" value={profile.sector || '—'} />
-      <MetricRow label="Country" value={profile.country || 'US'} />
+      <MetricRow label="Country" value={profile.country || '—'} />
+      <MetricRow label="Incorporated" value={profile.country_incorporation || '—'} />
       <MetricRow label="Float" value={formatNumber(profile.float_shares)} />
       <MetricRow label="Shares Outstanding" value={formatNumber(profile.shares_outstanding)} />
       <MetricRow

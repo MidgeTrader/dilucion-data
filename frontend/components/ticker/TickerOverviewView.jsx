@@ -2,6 +2,7 @@ import { useState } from 'react';
 import dynamic from 'next/dynamic';
 import CompanyAbout from '../CompanyAbout';
 import InfoCard from '../InfoCard';
+import { fpiRow } from '../../lib/fpi';
 import RiskPanel from '../RiskPanel';
 import RecentArticles from '../RecentArticles';
 import RecentFilings from '../RecentFilings';
@@ -16,10 +17,15 @@ const CandlestickChart = dynamic(() => import('../CandlestickChart'), {
   ),
 });
 
+// Los umbrales se comparan contra el valor absoluto: un EV negativo (empresa
+// con mas caja que market cap) caia al final y salia en crudo. Para positivos
+// la salida es identica a la de antes.
 function fmtM(n) {
   if (n == null) return '—';
-  if (n >= 1e6) return `${(n / 1e6).toFixed(2)} M`;
-  if (n >= 1e3) return `${(n / 1e3).toFixed(2)} K`;
+  const abs = Math.abs(n);
+  const sign = n < 0 ? '-' : '';
+  if (abs >= 1e6) return `${sign}${(abs / 1e6).toFixed(2)} M`;
+  if (abs >= 1e3) return `${sign}${(abs / 1e3).toFixed(2)} K`;
   return String(n);
 }
 
@@ -43,6 +49,12 @@ export default function TickerOverviewView({ data, loading, tickerUpper }) {
       'CH': '🇨🇭', 'Switzerland': '🇨🇭',
       'DE': '🇩🇪', 'Germany': '🇩🇪',
       'FR': '🇫🇷', 'France': '🇫🇷',
+      // Jurisdicciones de registro habituales en small caps extranjeras:
+      // casi todas las chinas cotizadas en Nasdaq son sociedades de Caiman.
+      'KY': '🇰🇾', 'Cayman Islands': '🇰🇾',
+      'VG': '🇻🇬', 'British Virgin Islands': '🇻🇬',
+      'BM': '🇧🇲', 'Bermuda': '🇧🇲',
+      'MH': '🇲🇭', 'Marshall Islands': '🇲🇭',
     };
     const flag = flags[c] || flags[p?.country] || '';
     return flag ? `${flag} ${c}` : c;
@@ -52,6 +64,8 @@ export default function TickerOverviewView({ data, loading, tickerUpper }) {
     { label: 'Sector', value: p.sector },
     { label: 'Industry', value: p.industry },
     { label: 'Country', value: countryFlag(p.country) },
+    { label: 'Incorporated', value: countryFlag(p.country_incorporation) },
+    { label: 'FPI', ...fpiRow(p.is_fpi) },
     { label: 'Exchange', value: p.exchange },
     { label: 'Vol Avg.', value: fmtM(p.avg_volume) },
     { label: 'Inst Own', value: p.institutional_ownership != null ? `${p.institutional_ownership.toFixed(3)}%` : 'N/A' },
@@ -61,10 +75,46 @@ export default function TickerOverviewView({ data, loading, tickerUpper }) {
     ? `${fmtM(p.float_shares)} / ${fmtM(p.shares_outstanding)}`
     : '—';
 
+  // Pista de caja: caja disponible / quema. Por debajo de 6 meses la proxima
+  // ampliacion es inminente, y para esta estrategia eso no es un riesgo — es el
+  // evento que se opera, de ahi el rojo.
+  const cashRunway = (prof) => {
+    const meses = prof?.months_of_cash;
+    if (meses == null) {
+      // Ojo: null aqui tiene DOS causas y no significan lo mismo. Si hay fecha
+      // de balance, la caja se leyo y el flujo de operaciones es positivo: no
+      // hay runway finito que agotar. Si no la hay, EDGAR no devolvio ni caja
+      // ni flujo, asi que no consta. Afirmar "flujo positivo" en el segundo
+      // caso seria inventarse el dato — que es el error que se venia
+      // cometiendo: un "—" por falta de dato se leia como "no quema".
+      return prof?.cash_balance_date
+        ? {
+            label: 'Time to Burn',
+            value: '—',
+            title: `Flujo de operaciones positivo: no hay quema que agotar (caja al ${prof.cash_balance_date})`,
+          }
+        : {
+            label: 'Time to Burn',
+            value: 's/d',
+            title: 'Sin dato: EDGAR no devuelve caja ni flujo de operaciones para este emisor',
+          };
+    }
+    const partes = [];
+    if (prof?.cash_burn_annual) partes.push(`Quema ${fmtM(Math.abs(prof.cash_burn_annual))}/año`);
+    if (prof?.cash_balance_date) partes.push(`Balance al ${prof.cash_balance_date}`);
+    return {
+      label: 'Time to Burn',
+      value: `${meses.toFixed(1)} m`,
+      highlight: meses < 6 ? 'text-accent-red' : meses < 12 ? 'text-accent-yellow' : '',
+      title: partes.length ? partes.join(' · ') : undefined,
+    };
+  };
+
   const card2 = p ? [
     { label: 'Float & OS', value: floatOs },
     { label: 'Cash/Shr', value: p.cash_per_share != null ? `$${p.cash_per_share.toFixed(2)}` : '—' },
     { label: 'Market Cap & Ev', value: `${fmtM(p.market_cap)} / ${fmtM(p.enterprise_value)}` },
+    cashRunway(p),
     { label: 'Short Interest', value: p.short_percent_float != null ? `${p.short_percent_float}%` : '—' },
     { label: 'Borrow Rate', value: p.borrow_rate != null ? `${p.borrow_rate.toFixed(2)}%` : '—', highlight: p.borrow_rate > 100 ? 'text-accent-red' : '' },
     { label: 'Days to Cover', value: p.days_to_cover ?? '—' },

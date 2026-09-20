@@ -24,7 +24,7 @@ export default function InfoCard({ title, rows = [], loading, compact = false })
               {row.icon && <span className="shrink-0">{row.icon}</span>}
               <span className="truncate">{row.label}</span>
             </span>
-            <span className={`kpi-value ${row.highlight || ''}`}>{row.value ?? '—'}</span>
+            <span className={`kpi-value ${row.highlight || ''}`} title={row.title || undefined}>{row.value ?? '—'}</span>
           </div>
         ))}
       </div>
