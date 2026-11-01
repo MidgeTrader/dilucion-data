@@ -33,7 +33,7 @@ function fmtM(n) {
 // al lado de un market cap en dólares se lee como dinero.
 function fmtAcc(n) {
   const texto = fmtM(n);
-  return texto === '—' ? texto : `${texto} acc.`;
+  return texto === '—' ? texto : `${texto} /shr`;
 }
 
 // Clasificación del float por tamaño, con cortes de small caps: por debajo de
