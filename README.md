@@ -44,6 +44,30 @@ UI web.
 
 ---
 
+## Capturas
+
+**Overview** — ficha del ticker: gráfico, float y capital emitido, caja disponible y nivel de riesgo
+por factor.
+
+![Overview del ticker](docs/screenshots/01-overview.png)
+
+**Filings** — filings indexados de la SEC, agrupados por tipo (news, prospectus, otros) con su
+headline y fecha.
+
+![Filings](docs/screenshots/02-filings.png)
+
+**Dilution Tracker** — warrants, programas ATM, shelf registrations, eventos de dilución pendientes y
+posición de caja con su quema trimestral.
+
+![Dilution Tracker](docs/screenshots/03-dilution.png)
+
+**Insights** — hallazgos del análisis con IA priorizados por riesgo, enlazados al filing que los
+provoca.
+
+![Insights](docs/screenshots/04-insights.png)
+
+---
+
 ## Stack
 
 | Capa | Tecnología |
