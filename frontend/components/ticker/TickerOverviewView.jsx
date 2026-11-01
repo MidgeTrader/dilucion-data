@@ -99,7 +99,7 @@ export default function TickerOverviewView({ data, loading, tickerUpper }) {
   ] : [];
 
   const floatOs = p?.float_shares != null && p?.shares_outstanding != null
-    ? `${fmtAcc(p.float_shares)} / ${fmtAcc(p.shares_outstanding)}`
+    ? `${fmtM(p.float_shares)} / ${fmtAcc(p.shares_outstanding)}`
     : '—';
 
   // Capital emitido que NO está en el float: insiders, restringidas y bloqueadas.
