@@ -95,6 +95,14 @@ export default function TickerOverviewView({ data, loading, tickerUpper }) {
     ? `${fmtM(p.float_shares)} / ${fmtM(p.shares_outstanding)}`
     : '—';
 
+  // Capital emitido que NO está en el float: insiders, restringidas y bloqueadas.
+  // Es la oferta que puede entrar al mercado de golpe cuando se libere
+  // (fin de lock-up o ventana de la Rule 144), así que interesa tenerla a mano.
+  const noFloatShares =
+    p?.float_shares != null && p?.shares_outstanding != null && p.shares_outstanding >= p.float_shares
+      ? p.shares_outstanding - p.float_shares
+      : null;
+
   // Pista de caja: caja disponible / quema. Por debajo de 6 meses la proxima
   // ampliacion es inminente, y para esta estrategia eso no es un riesgo — es el
   // evento que se opera, de ahi el rojo.
@@ -132,7 +140,8 @@ export default function TickerOverviewView({ data, loading, tickerUpper }) {
 
   const card2 = p ? [
     { label: 'Float & OS', value: floatOs },
-    { label: 'Float', ...floatTier(p.float_shares) },
+    { label: 'Float (disponibles)', ...floatTier(p.float_shares) },
+    { label: 'No-float', value: fmtM(noFloatShares), title: 'Capital emitido fuera del float: insiders, restringidas y bloqueadas. Puede entrar en el mercado al liberarse (lock-up, Rule 144)' },
     { label: 'Cash/Shr', value: p.cash_per_share != null ? `$${p.cash_per_share.toFixed(2)}` : '—' },
     { label: 'Market Cap & EV', value: `${fmtM(p.market_cap)} / ${fmtM(p.enterprise_value)}` },
     cashRunway(p),
