@@ -29,6 +29,13 @@ function fmtM(n) {
   return String(n);
 }
 
+// Igual que fmtM pero para recuentos de acciones. Sin la unidad, un "1.47 M"
+// al lado de un market cap en dólares se lee como dinero.
+function fmtAcc(n) {
+  const texto = fmtM(n);
+  return texto === '—' ? texto : `${texto} acc.`;
+}
+
 // Clasificación del float por tamaño, con cortes de small caps: por debajo de
 // 10 M el precio se mueve con poco dinero y el riesgo de squeeze es real; por
 // encima de 50 M el float deja de ser la historia. Se mide sobre las acciones
@@ -92,7 +99,7 @@ export default function TickerOverviewView({ data, loading, tickerUpper }) {
   ] : [];
 
   const floatOs = p?.float_shares != null && p?.shares_outstanding != null
-    ? `${fmtM(p.float_shares)} / ${fmtM(p.shares_outstanding)}`
+    ? `${fmtAcc(p.float_shares)} / ${fmtAcc(p.shares_outstanding)}`
     : '—';
 
   // Capital emitido que NO está en el float: insiders, restringidas y bloqueadas.
@@ -141,7 +148,7 @@ export default function TickerOverviewView({ data, loading, tickerUpper }) {
   const card2 = p ? [
     { label: 'Float & OS', value: floatOs },
     { label: 'Float', ...floatTier(p.float_shares) },
-    { label: 'No-float (no disponibles)', value: fmtM(noFloatShares), title: 'Capital emitido fuera del float: insiders, restringidas y bloqueadas. Puede entrar en el mercado al liberarse (lock-up, Rule 144)' },
+    { label: 'No-float (no disponibles)', value: fmtAcc(noFloatShares), title: 'Capital emitido fuera del float: insiders, restringidas y bloqueadas. Puede entrar en el mercado al liberarse (lock-up, Rule 144)' },
     { label: 'Cash/Shr', value: p.cash_per_share != null ? `$${p.cash_per_share.toFixed(2)}` : '—' },
     { label: 'Market Cap & EV', value: `${fmtM(p.market_cap)} / ${fmtM(p.enterprise_value)}` },
     cashRunway(p),
