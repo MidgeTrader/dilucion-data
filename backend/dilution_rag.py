@@ -442,7 +442,6 @@ Formato: usa ** para los encabezados, separados por linea en blanco. Texto conci
         if cached and isinstance(cached, dict) and cached.get("report"):
             return cached["report"]
         try:
-            profile = data.get("profile", {})
             risk = data.get("risk", {})
             n = len(data.get("filings", []))
             forms = sorted(set(f.get("form_type", "") for f in data.get("filings", [])))

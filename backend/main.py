@@ -407,7 +407,6 @@ def cmd_serve(args: argparse.Namespace) -> int:
         # Auto-scan si el ticker no tiene filings todavia
         if not filings:
             try:
-                from pipeline import ScanPipeline
                 result = _shared_pipeline.scan_ticker(ticker, run_rag=False)
                 if result and result.filings_processed > 0:
                     filings = result.filings
@@ -596,7 +595,6 @@ def cmd_serve(args: argparse.Namespace) -> int:
 
         if not filings:
             try:
-                from pipeline import ScanPipeline
                 result = _shared_pipeline.scan_ticker(ticker, run_rag=False)
                 if result and result.filings_processed > 0:
                     filings = result.filings
@@ -634,7 +632,6 @@ def cmd_serve(args: argparse.Namespace) -> int:
         filings = db.parquet.get_filings_by_ticker(ticker)
         if not filings:
             try:
-                from pipeline import ScanPipeline
                 result = _shared_pipeline.scan_ticker(ticker, run_rag=False)
                 if result and result.filings_processed > 0:
                     filings = result.filings
@@ -668,7 +665,6 @@ def cmd_serve(args: argparse.Namespace) -> int:
 
     @app.post("/scan/{ticker}")
     def scan_ticker_api(ticker: str, max_filings: int = 30):
-        from pipeline import ScanPipeline
         result = _shared_pipeline.scan_ticker(ticker, run_rag=False, max_filings=max_filings)
         return result.model_dump()
 
@@ -1015,10 +1011,8 @@ def cmd_dashboard(_: argparse.Namespace) -> int:
     """DEPRECATED — use the Next.js frontend (npm run dev in frontend/) instead."""
     logger.warning("Streamlit dashboard is deprecated. Use the Next.js frontend (cd frontend && npm run dev) instead.")
     import streamlit as st
-    from apis.data_enrichment import DataEnrichment
     from db.parquet_db import ParquetDB
     from pipeline import ScanPipeline
-    from rag.prompts import list_prompts
 
     st.set_page_config(page_title="SEC Dilution Tracker", layout="wide")
     st.title("SEC Dilution Tracker + RAG")
@@ -1049,7 +1043,7 @@ def cmd_mode(_: argparse.Namespace) -> int:
     s = get_settings()
     db = Database()
     print(f"Mode:           {db.get_mode()}")
-    print(f"Storage:        local (Parquet + SQLite)")
+    print("Storage:        local (Parquet + SQLite)")
     print(f"SQLite path:    {s.sqlite_db_path}")
     print(f"Telegram token: {'set' if s.telegram_bot_token else 'NOT SET'}")
     print(f"Admin chat ID:  {s.telegram_admin_chat_id or 'NOT SET'}")

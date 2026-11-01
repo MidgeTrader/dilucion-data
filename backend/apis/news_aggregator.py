@@ -13,7 +13,6 @@ from apis.google_news_client import GoogleNewsClient
 from apis.polygon_client import PolygonClient
 from apis.yfinance_client import YFinanceClient
 from cache import TTLCache
-from config import get_settings
 from models import NewsArticle
 
 logger = logging.getLogger(__name__)

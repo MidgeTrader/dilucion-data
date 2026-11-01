@@ -17,11 +17,9 @@ from typing import Optional
 
 from config import get_settings
 from models import (
-    DilutionTrackerData, CashPosition, PendingOffering,
-    ShelfRegistration, ATMProgram, WarrantIssue, ConvertibleIssue,
+    DilutionTrackerData, CashPosition, ShelfRegistration, ATMProgram, WarrantIssue, ConvertibleIssue,
     EquityLine, CompletedOffering, LockUpAgreement,
-    NasdaqComplianceItem, ReverseSplit, Company, FilingDilution,
-    SECFilingMeta, PendingDilutionEvent,
+    NasdaqComplianceItem, ReverseSplit, Company, SECFilingMeta, PendingDilutionEvent,
 )
 from parsers.sec_parser import SECParser, ParsedFiling
 from scanners.company_facts import CompanyFactsClient

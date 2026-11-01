@@ -5,7 +5,7 @@ from __future__ import annotations
 import logging
 import re
 from datetime import date
-from typing import List, Optional
+from typing import Optional
 
 from langchain_chroma import Chroma
 from langchain_core.documents import Document
@@ -135,7 +135,6 @@ class RAGEngine:
         db.inicializar()
         filing_record = None
         if parsed.accession_number and parsed.cik:
-            from datetime import datetime as dt
             filed = date.today()
             filing_record = db.registrar_alerta(
                 accession_number=parsed.accession_number,

@@ -8,13 +8,13 @@ import time
 import xml.etree.ElementTree as ET
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Callable, List, Optional, Set
+from typing import Callable, List, Optional
 
 import requests
 from tenacity import retry, stop_after_attempt, wait_exponential
 
 from config import get_settings
-from models import CriticalFiling, RSSAlert
+from models import RSSAlert
 
 logger = logging.getLogger(__name__)
 
@@ -73,7 +73,6 @@ class RSSMonitor:
             title = entry.findtext("atom:title", default="", namespaces=ATOM_NS)
             link_el = entry.find("atom:link", ATOM_NS)
             link = link_el.get("href", "") if link_el is not None else ""
-            updated = entry.findtext("atom:updated", default="", namespaces=ATOM_NS)
             summary = entry.findtext("atom:summary", default="", namespaces=ATOM_NS)
 
             form_type = self._extract_form_type(title)

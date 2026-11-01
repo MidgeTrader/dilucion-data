@@ -8,7 +8,7 @@ from typing import List, Optional
 
 from apis.data_enrichment import DataEnrichment
 from db.database import Database
-from models import Company, FilingDilution, PipelineResult, RiskLevel, ScanResult
+from models import Company, FilingDilution, PipelineResult, ScanResult
 from parsers.dilution_calculator import DilutionCalculator
 from parsers.sec_parser import SECParser
 from rag.rag_engine import RAGEngine

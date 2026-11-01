@@ -206,7 +206,6 @@ class TelegramBot:
             filings = await asyncio.to_thread(self.scanner.scan_date)
             count = 0
             for f in filings:
-                from datetime import date as date_cls
                 from models import FilingDilution, RiskLevel
                 alert = FilingDilution(
                     accession_number=f.file_path.split("/")[-1].replace(".txt", "")[:20] or f"cik-{f.cik}-{f.filed_date}",

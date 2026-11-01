@@ -96,14 +96,6 @@ class Citation(BaseModel):
     score: Optional[float] = None
 
 
-class RAGRequest(BaseModel):
-    question: str
-    ticker: Optional[str] = None
-    url: Optional[str] = None
-    prompt_type: Optional[str] = None
-    use_reasoning: bool = False
-
-
 class RAGResponse(BaseModel):
     answer: str
     citations: list[Citation] = Field(default_factory=list)

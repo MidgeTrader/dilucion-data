@@ -18,7 +18,7 @@ from typing import List, Optional, Tuple
 import pandas as pd
 
 from config import get_settings
-from models import Company, DilutionAlert, FilingDilution, RiskLevel
+from models import Company, FilingDilution, RiskLevel
 
 logger = logging.getLogger(__name__)
 
