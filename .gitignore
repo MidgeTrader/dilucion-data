@@ -1,47 +1,50 @@
 
 # Build
+build/
+dist/
+out/
+.next/
+*.tsbuildinfo
+
 # Data & cache
-# Environment
-# IDE
-# Node
-# Python
-# Streamlit
-*.egg
-*.egg-info/
+data/
+chroma/
+*.parquet
+*.sqlite
 *.log
 # Los logs rotados (server.log.2026-09-20-...) NO acababan en .log, asi que
 # *.log no los cubria y se colaban al commit. Llevan URLs con la clave de API
 # dentro, y este repo es publico.
 *.log.*
-*.parquet
-*.py[cod]
-*.sqlite
-*.swp
-*.tsbuildinfo
-.DS_Store
-.env
-.env.*.local
-.env.local
-.idea/
-.next/
-.streamlit/
-.venv/
-.vscode/
-__pycache__/
-backend/.env
-<<<<<<< HEAD
-backend.BAK*/
-=======
+
 # Copias locales del backend (backend.BAK.<fecha>/): codigo viejo duplicado y
 # su propio .env. No deben subirse.
-backend.BAK.*/
->>>>>>> b738924 (Backend: pista de caja (Time to Burn), FPI y fin de las claves en los logs)
-build/
-chroma/
-data/
-dist/
-env/
+backend.BAK*/
+
+# Environment
+.env
+.env.local
+.env.*.local
+backend/.env
+
+# IDE
+.idea/
+.vscode/
+*.swp
+.DS_Store
+
+# Node
 node_modules/
 npm-debug.log*
-out/
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg
+*.egg-info/
+.venv/
 venv/
+env/
+
+# Streamlit
+.streamlit/
