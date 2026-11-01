@@ -141,7 +141,7 @@ export default function TickerOverviewView({ data, loading, tickerUpper }) {
   const card2 = p ? [
     { label: 'Float & OS', value: floatOs },
     { label: 'Float', ...floatTier(p.float_shares) },
-    { label: 'No-float (disponibles)', value: fmtM(noFloatShares), title: 'Capital emitido fuera del float: insiders, restringidas y bloqueadas. Puede entrar en el mercado al liberarse (lock-up, Rule 144)' },
+    { label: 'No-float (no disponibles)', value: fmtM(noFloatShares), title: 'Capital emitido fuera del float: insiders, restringidas y bloqueadas. Puede entrar en el mercado al liberarse (lock-up, Rule 144)' },
     { label: 'Cash/Shr', value: p.cash_per_share != null ? `$${p.cash_per_share.toFixed(2)}` : '—' },
     { label: 'Market Cap & EV', value: `${fmtM(p.market_cap)} / ${fmtM(p.enterprise_value)}` },
     cashRunway(p),
