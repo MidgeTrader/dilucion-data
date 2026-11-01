@@ -366,7 +366,7 @@ def cmd_serve(args: argparse.Namespace) -> int:
             if body.url:
                 r = engine.scan_url(body.url, question=question, ticker=body.ticker,
                                     use_reasoning=body.use_reasoning or body.prompt_type == "convertible")
-                return RAGResponse(answer=r.answer, citations=r.citations, model=settings.deepseek_model,
+                return RAGResponse(answer=r.answer, citations=r.citations, model=settings.chat_model,
                                    ticker=body.ticker, source_url=r.source_url)
             if body.ticker:
                 return engine.query_ticker(body.ticker, question=question, prompt_type=body.prompt_type,

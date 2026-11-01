@@ -123,6 +123,7 @@ class DilutionRAGExtractor:
         self.embeddings = OpenAIEmbeddings(
             model=self.settings.embedding_model,
             api_key=self.settings.openai_api_key,
+            **({"base_url": self.settings.embedding_base_url} if self.settings.embedding_base_url else {}),
         )
         self._init_cache()
 
@@ -188,7 +189,7 @@ class DilutionRAGExtractor:
             key = self._cache_key(url, extraction_type)
             conn.execute(
                 "INSERT OR REPLACE INTO extraction_cache VALUES (?, ?, ?, ?, ?)",
-                (key, extraction_type, json.dumps(data), self.settings.deepseek_model,
+                (key, extraction_type, json.dumps(data), self.settings.chat_model,
                  datetime.utcnow().isoformat())
             )
             # Sin commit el INSERT queda solo en la conexión thread-local y se
@@ -199,10 +200,10 @@ class DilutionRAGExtractor:
 
     def _get_llm(self) -> ChatOpenAI:
         return ChatOpenAI(
-            model=self.settings.deepseek_model,
+            model=self.settings.chat_model,
             temperature=0.0,
-            api_key=self.settings.deepseek_api_key,
-            base_url="https://api.deepseek.com/v1",
+            api_key=self.settings.chat_api_key,
+            base_url=self.settings.llm_base_url,
         )
 
     def _vectorize_filing(self, parsed: ParsedFiling) -> Chroma:
@@ -400,8 +401,8 @@ Make it informative but concise (max 120 chars)."""
             text = parsed.text[:4000]
             from langchain_openai import ChatOpenAI
             from langchain_core.prompts import ChatPromptTemplate
-            llm = ChatOpenAI(model=self.settings.deepseek_model, temperature=0.0,
-                            api_key=self.settings.deepseek_api_key, base_url="https://api.deepseek.com/v1")
+            llm = ChatOpenAI(model=self.settings.chat_model, temperature=0.0,
+                            api_key=self.settings.chat_api_key, base_url=self.settings.llm_base_url)
             prompt = ChatPromptTemplate.from_messages([
                 ("system", JSON_SYSTEM_PROMPT),
                 ("human", "Filing text:\n{text}\n\n{input}")
@@ -469,8 +470,8 @@ Formato: usa ** para los encabezados, separados por linea en blanco. Texto conci
 
             from langchain_openai import ChatOpenAI
             from langchain_core.prompts import ChatPromptTemplate
-            llm = ChatOpenAI(model=self.settings.deepseek_model, temperature=0.0,
-                            api_key=self.settings.deepseek_api_key, base_url="https://api.deepseek.com/v1")
+            llm = ChatOpenAI(model=self.settings.chat_model, temperature=0.0,
+                            api_key=self.settings.chat_api_key, base_url=self.settings.llm_base_url)
             prompt_text = self.RESEARCH_PROMPT_BEFORE.format(**prompt_data)
             prompt = ChatPromptTemplate.from_messages([("system", "Eres un analista financiero."), ("human", prompt_text)])
             resp = llm.invoke(prompt.format_messages())

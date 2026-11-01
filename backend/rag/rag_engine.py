@@ -44,19 +44,16 @@ class RAGEngine:
         self.embeddings = OpenAIEmbeddings(
             model=self.settings.embedding_model,
             api_key=self.settings.openai_api_key,
+            **({"base_url": self.settings.embedding_base_url} if self.settings.embedding_base_url else {}),
         )
 
     def _get_llm(self, use_reasoning: bool = False) -> ChatOpenAI:
-        model = (
-            self.settings.deepseek_reasoning_model
-            if use_reasoning
-            else self.settings.deepseek_model
-        )
+        model = self.settings.chat_reasoning_model if use_reasoning else self.settings.chat_model
         return ChatOpenAI(
             model=model,
             temperature=self.settings.llm_temperature,
-            api_key=self.settings.deepseek_api_key,
-            base_url="https://api.deepseek.com/v1",
+            api_key=self.settings.chat_api_key,
+            base_url=self.settings.llm_base_url,
         )
 
     def _collection_name(self, accession: Optional[str], url: str) -> str:
@@ -111,7 +108,7 @@ class RAGEngine:
         return RAGResponse(
             answer=answer,
             citations=citations,
-            model=self.settings.deepseek_reasoning_model if use_reasoning else self.settings.deepseek_model,
+            model=self.settings.chat_reasoning_model if use_reasoning else self.settings.chat_model,
             ticker=ticker,
             source_url=parsed.url,
         )

@@ -45,9 +45,24 @@ class Settings(BaseSettings):
     chunk_overlap: int = 200
     retriever_k: int = 5
     llm_temperature: float = 0.0
+
+    # ── Proveedor de IA ───────────────────────────────────────────────────
+    # El chat habla el protocolo de OpenAI, así que sirve cualquier proveedor
+    # compatible (DeepSeek, OpenAI, Groq, Together, Ollama...). Por defecto
+    # apunta a DeepSeek; para usar otro basta con cambiar estas variables.
+    llm_base_url: str = Field(default="https://api.deepseek.com/v1", alias="LLM_BASE_URL")
+    llm_api_key: str = Field(default="", alias="LLM_API_KEY")
+    llm_model: str = Field(default="", alias="LLM_MODEL")
+    llm_reasoning_model: str = Field(default="", alias="LLM_REASONING_MODEL")
+
+    # Los embeddings van a OpenAI por defecto; EMBEDDING_BASE_URL permite
+    # apuntarlos a un servidor local (p. ej. Ollama) sin tocar código.
+    embedding_model: str = "text-embedding-3-small"
+    embedding_base_url: str = Field(default="", alias="EMBEDDING_BASE_URL")
+
+    # Valores por defecto de DeepSeek, usados si no se define lo de arriba.
     deepseek_model: str = "deepseek-chat"
     deepseek_reasoning_model: str = "deepseek-reasoner"
-    embedding_model: str = "text-embedding-3-small"
 
     sec_rate_limit_per_min: int = 10
     sec_rate_limit_per_sec: int = 10
@@ -74,10 +89,25 @@ class Settings(BaseSettings):
 
     def validate_rag_keys(self) -> None:
         """Ensure keys required for RAG are present."""
-        if not self.deepseek_api_key:
-            raise ValueError("DEEPSEEK_API_KEY is required for RAG operations.")
+        if not self.chat_api_key:
+            raise ValueError("LLM_API_KEY (or DEEPSEEK_API_KEY) is required for RAG operations.")
         if not self.openai_api_key:
             raise ValueError("OPENAI_API_KEY is required for embeddings.")
+
+    @property
+    def chat_api_key(self) -> str:
+        """Key for the chat LLM: LLM_API_KEY if set, else DEEPSEEK_API_KEY."""
+        return self.llm_api_key or self.deepseek_api_key
+
+    @property
+    def chat_model(self) -> str:
+        """Chat model: LLM_MODEL if set, else the DeepSeek default."""
+        return self.llm_model or self.deepseek_model
+
+    @property
+    def chat_reasoning_model(self) -> str:
+        """Reasoning model: LLM_REASONING_MODEL if set, else the DeepSeek default."""
+        return self.llm_reasoning_model or self.deepseek_reasoning_model
 
     @property
     def companies_parquet(self) -> Path:
