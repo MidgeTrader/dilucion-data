@@ -29,6 +29,26 @@ function fmtM(n) {
   return String(n);
 }
 
+// Clasificación del float por tamaño, con cortes de small caps: por debajo de
+// 10 M el precio se mueve con poco dinero y el riesgo de squeeze es real; por
+// encima de 50 M el float deja de ser la historia. Se mide sobre las acciones
+// libres (float_shares) y no sobre el capital emitido, que es lo que opera.
+const FLOAT_LOW_MAX = 10e6;
+const FLOAT_MEDIUM_MAX = 50e6;
+
+function floatTier(shares) {
+  // Cero o negativo es un dato roto, no un float diminuto.
+  if (shares == null || shares <= 0) return { value: '—' };
+  const esLow = shares < FLOAT_LOW_MAX;
+  const esMedium = shares < FLOAT_MEDIUM_MAX;
+  return {
+    value: esLow ? 'Low' : esMedium ? 'Medium' : 'Large',
+    highlight: esLow ? 'text-accent-red' : esMedium ? 'text-accent-yellow' : '',
+    title: `${shares.toLocaleString('es-ES')} acciones en float · ` +
+      'Low < 10 M · Medium 10-50 M · Large > 50 M',
+  };
+}
+
 export default function TickerOverviewView({ data, loading, tickerUpper }) {
   const p = data?.profile;
   const risk = data?.risk;
@@ -112,8 +132,9 @@ export default function TickerOverviewView({ data, loading, tickerUpper }) {
 
   const card2 = p ? [
     { label: 'Float & OS', value: floatOs },
+    { label: 'Float', ...floatTier(p.float_shares) },
     { label: 'Cash/Shr', value: p.cash_per_share != null ? `$${p.cash_per_share.toFixed(2)}` : '—' },
-    { label: 'Market Cap & Ev', value: `${fmtM(p.market_cap)} / ${fmtM(p.enterprise_value)}` },
+    { label: 'Market Cap & EV', value: `${fmtM(p.market_cap)} / ${fmtM(p.enterprise_value)}` },
     cashRunway(p),
     { label: 'Short Interest', value: p.short_percent_float != null ? `${p.short_percent_float}%` : '—' },
     { label: 'Borrow Rate', value: p.borrow_rate != null ? `${p.borrow_rate.toFixed(2)}%` : '—', highlight: p.borrow_rate > 100 ? 'text-accent-red' : '' },
